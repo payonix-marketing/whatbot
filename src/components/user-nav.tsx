@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { getInitials } from "@/lib/utils";
 
 export function UserNav() {
   const { profile } = useAuth();
@@ -22,11 +23,6 @@ export function UserNav() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push('/login');
-  };
-
-  const getInitials = (name: string | null | undefined) => {
-    if (!name) return "A";
-    return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
   return (
@@ -52,7 +48,7 @@ export function UserNav() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout}>
+        <DropdownMenuItem onClick={handleLogout} className="focus:bg-destructive/10 focus:text-destructive">
           <LogOut className="mr-2 h-4 w-4" />
           <span>Log out</span>
         </DropdownMenuItem>

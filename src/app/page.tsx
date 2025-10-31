@@ -9,20 +9,20 @@ import { ConversationProvider } from "../context/conversation-context";
 export default function Home() {
   return (
     <ConversationProvider>
-      <main className="h-screen bg-background">
+      <main className="h-screen bg-background text-foreground overflow-hidden">
         <ResizablePanelGroup
           direction="horizontal"
           className="h-full max-h-screen items-stretch"
         >
-          <ResizablePanel defaultSize={25} minSize={20} maxSize={30}>
+          <ResizablePanel defaultSize={25} minSize={20} maxSize={35}>
             <ConversationList />
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={45} minSize={30}>
+          <ResizablePanel defaultSize={50} minSize={30}>
             <ChatWindow />
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize={30} minSize={20} maxSize={30}>
+          <ResizablePanel defaultSize={25} minSize={20} maxSize={35}>
             <CustomerProfile />
           </ResizablePanel>
         </ResizablePanelGroup>
