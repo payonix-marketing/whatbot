@@ -4,11 +4,12 @@ import { useState, useRef, useEffect } from "react";
 import { useConversations } from "../context/conversation-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
+import { Send, MoreVertical, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Message } from "@/lib/types";
 
 export function ChatWindow() {
-  const { selectedConversation, addMessage } = useConversations();
+  const { selectedConversation, addMessage, deleteMessage } = useConversations();
   const [message, setMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -37,12 +38,24 @@ export function ChatWindow() {
         <h2 className="text-xl font-semibold">{selectedConversation.customer?.name}</h2>
         <p className="text-sm text-muted-foreground">{selectedConversation.customer?.phone}</p>
       </div>
-      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-muted/20">
+      <div className="flex-1 p-4 overflow-y-auto space-y-2 bg-muted/20">
         {selectedConversation.messages.map((msg: Message) => (
-          <div key={msg.id} className={`flex ${msg.sender === 'agent' ? 'justify-end' : 'justify-start'}`}>
+          <div key={msg.id} className={`group flex items-center gap-2 ${msg.sender === 'agent' ? 'justify-end flex-row-reverse' : 'justify-start'}`}>
             <div className={`p-3 rounded-lg max-w-md ${msg.sender === 'agent' ? 'bg-primary text-primary-foreground' : 'bg-background'}`}>
               {msg.text}
             </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => deleteMessage(selectedConversation.id, msg.id)} className="text-destructive">
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         ))}
         <div ref={messagesEndRef} />
@@ -54,10 +67,14 @@ export function ChatWindow() {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            disabled={selectedConversation.customer?.is_blocked}
           />
-          <Button onClick={handleSend}><Send className="w-4 h-4 mr-2" /> Send</Button>
-          <Button variant="outline">Send Template</Button>
+          <Button onClick={handleSend} disabled={selectedConversation.customer?.is_blocked}><Send className="w-4 h-4 mr-2" /> Send</Button>
+          <Button variant="outline" disabled={selectedConversation.customer?.is_blocked}>Send Template</Button>
         </div>
+        {selectedConversation.customer?.is_blocked && (
+          <p className="text-sm text-destructive text-center mt-2">This customer is blocked. You cannot send messages.</p>
+        )}
       </div>
     </div>
   );

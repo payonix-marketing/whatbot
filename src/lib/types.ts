@@ -11,6 +11,7 @@ export type Customer = {
   name: string | null;
   phone: string;
   created_at: string;
+  is_blocked: boolean;
 };
 
 export type Message = {

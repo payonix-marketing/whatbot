@@ -4,6 +4,7 @@ import { useConversations } from "../context/conversation-context";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -15,11 +16,17 @@ import { toast } from "sonner";
 import type { Agent } from "@/lib/types";
 
 export function CustomerProfile() {
-  const { selectedConversation, updateConversation, agents } = useConversations();
+  const { selectedConversation, updateConversation, agents, updateCustomer } = useConversations();
 
   const handleNoteSave = () => {
-    // The note is already saved on change, this is for user feedback
     toast.success("Note saved!");
+  };
+
+  const handleBlockToggle = () => {
+    if (!selectedConversation || !selectedConversation.customer) return;
+    const isBlocked = selectedConversation.customer.is_blocked;
+    updateCustomer(selectedConversation.customer.id, { is_blocked: !isBlocked });
+    toast.success(`Customer has been ${!isBlocked ? 'blocked' : 'unblocked'}.`);
   };
 
   if (!selectedConversation) {
@@ -32,7 +39,10 @@ export function CustomerProfile() {
 
   return (
     <div className="p-4 border-l h-full">
-      <h2 className="text-xl font-semibold">Customer Profile</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Customer Profile</h2>
+        {selectedConversation.customer?.is_blocked && <Badge variant="destructive">Blocked</Badge>}
+      </div>
       <div className="mt-4 space-y-4">
         <div>
           <Label>Phone Number</Label>
@@ -81,6 +91,13 @@ export function CustomerProfile() {
           />
         </div>
         <Button className="w-full" onClick={handleNoteSave}>Save Note</Button>
+        <Button
+          className="w-full"
+          variant={selectedConversation.customer?.is_blocked ? "secondary" : "destructive"}
+          onClick={handleBlockToggle}
+        >
+          {selectedConversation.customer?.is_blocked ? "Unblock Customer" : "Block Customer"}
+        </Button>
       </div>
     </div>
   );
