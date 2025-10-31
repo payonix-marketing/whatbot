@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useMemo } from 'react';
 import { conversations as initialConversations, customers, agents } from '@/lib/data';
 import type { Conversation, Message, Customer, Agent } from '@/lib/types';
+import { toast } from "sonner";
 
 interface ConversationContextType {
   conversations: Conversation[];
@@ -35,8 +36,16 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     );
   };
 
-  const addMessage = (conversationId: string, text: string) => {
+  const addMessage = async (conversationId: string, text: string) => {
     if (!text.trim()) return;
+
+    const conversation = conversations.find(c => c.id === conversationId);
+    const customer = customers.find(c => c.id === conversation?.customerId);
+
+    if (!customer) {
+      toast.error("Could not find customer for this conversation.");
+      return;
+    }
 
     const newMessage: Message = {
       id: `msg-${Date.now()}`,
@@ -46,6 +55,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       timestamp: new Date().toISOString(),
     };
 
+    // Optimistic update
     setConversations(prev =>
       prev.map(conv => {
         if (conv.id === conversationId) {
@@ -58,6 +68,25 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         return conv;
       })
     );
+
+    // Send message via API
+    try {
+      const response = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: customer.phone, text }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
+      toast.success("Message sent!");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast.error(`Error: ${errorMessage}`);
+      // Optional: Here you could add logic to mark the message as "failed" in the UI
+    }
   };
 
   return (
