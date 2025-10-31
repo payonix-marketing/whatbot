@@ -12,19 +12,33 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConversationListSkeleton } from "./conversation-list-skeleton";
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
 
 export function ConversationList() {
   const { conversations, customers, selectedConversationId, setSelectedConversationId, loading } = useConversations();
   const { user } = useAuth();
   const [filter, setFilter] = useState<Conversation['status'] | 'all'>('new');
+  const [searchTerm, setSearchTerm] = useState("");
 
   if (loading) {
     return <ConversationListSkeleton />;
   }
 
-  const getFilteredConversations = (status: Conversation['status'] | 'all') => {
-    return conversations.filter((conv: Conversation) => {
-      if (status === 'all') return true;
+  const searchedConversations = conversations.filter((conv) => {
+    const customer = customers.find((c) => c.id === conv.customer_id);
+    if (!customer) return false;
+    const searchTermLower = searchTerm.toLowerCase();
+    const customerName = customer.name?.toLowerCase() || "";
+    const customerPhone = customer.phone.toLowerCase();
+    return (
+      customerName.includes(searchTermLower) ||
+      customerPhone.includes(searchTermLower)
+    );
+  });
+
+  const getFilteredConversations = (status: Conversation['status']) => {
+    return searchedConversations.filter((conv: Conversation) => {
       if (status === 'mine') return conv.agent_id === user?.id;
       return conv.status === status;
     });
@@ -34,7 +48,9 @@ export function ConversationList() {
     if (convos.length === 0) {
       return (
         <div className="flex items-center justify-center h-full text-center p-4">
-          <p className="text-sm text-muted-foreground">No conversations in this view.</p>
+          <p className="text-sm text-muted-foreground">
+            {searchTerm ? "No conversations found." : "No conversations in this view."}
+          </p>
         </div>
       );
     }
@@ -84,6 +100,17 @@ export function ConversationList() {
       <div className="p-4 border-b flex items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Inbox</h2>
         <NewConversationDialog />
+      </div>
+      <div className="p-3 border-b">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or phone..."
+            className="pl-9"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
       </div>
       <Tabs value={filter} onValueChange={(value) => setFilter(value as any)} className="flex-1 flex flex-col">
         <TabsList className="grid w-full grid-cols-3 mx-auto mt-2 max-w-[calc(100%-2rem)]">
