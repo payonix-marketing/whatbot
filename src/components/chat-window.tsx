@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { useConversations } from "../context/conversation-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, MoreVertical, Trash2, Paperclip, Smile, MessageSquare, Phone, ArrowLeft, User } from "lucide-react";
+import { Send, MoreVertical, Trash2, Paperclip, Smile, MessageSquare, Phone, ArrowLeft, User, File as FileIcon } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,6 +17,8 @@ import { CustomerProfile } from "./customer-profile";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useTypingIndicator } from "@/hooks/use-typing-indicator";
+import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import { useTheme } from "next-themes";
 
 const DateSeparator = ({ date }: { date: string }) => {
   let formattedDate;
@@ -35,12 +37,14 @@ const DateSeparator = ({ date }: { date: string }) => {
 };
 
 export function ChatWindow() {
-  const { selectedConversation, addMessage, deleteMessage, setSelectedConversationId, cannedResponses } = useConversations();
+  const { selectedConversation, addMessage, deleteMessage, sendAttachment, setSelectedConversationId, cannedResponses } = useConversations();
   const [message, setMessage] = useState("");
   const [showCannedResponses, setShowCannedResponses] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
   const { typingUsers, startTyping } = useTypingIndicator(selectedConversation?.id || null);
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -62,6 +66,24 @@ export function ChatWindow() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessage(e.target.value);
     startTyping();
+  };
+
+  const handleEmojiClick = (emojiData: EmojiClickData) => {
+    setMessage(prev => prev + emojiData.emoji);
+  };
+
+  const handleAttachmentClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && selectedConversation) {
+      sendAttachment(selectedConversation.id, file, message);
+      setMessage("");
+    }
+    // Reset file input
+    if(e.target) e.target.value = "";
   };
 
   if (!selectedConversation) {
@@ -132,9 +154,23 @@ export function ChatWindow() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
-                  <div className={`p-3 rounded-2xl max-w-md md:max-w-lg relative ${msg.sender === 'agent' ? 'bg-primary text-primary-foreground rounded-br-lg' : 'bg-muted rounded-bl-lg'}`}>
-                    <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-                    <p className="text-xs opacity-70 mt-1 text-right">{format(new Date(msg.timestamp), 'p')}</p>
+                  <div className={`p-2 rounded-2xl max-w-md md:max-w-lg relative ${msg.sender === 'agent' ? 'bg-primary text-primary-foreground rounded-br-lg' : 'bg-muted rounded-bl-lg'}`}>
+                    {msg.attachment ? (
+                      <div className="p-1">
+                        {msg.attachment.fileType.startsWith('image/') ? (
+                          <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs rounded-lg cursor-pointer" onClick={() => window.open(msg.attachment.url, '_blank')} />
+                        ) : (
+                          <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-background/20 rounded-lg">
+                            <FileIcon className="w-6 h-6" />
+                            <span className="truncate">{msg.attachment.fileName}</span>
+                          </a>
+                        )}
+                        {msg.text && <p className="text-sm whitespace-pre-wrap mt-2">{msg.text}</p>}
+                      </div>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap px-1">{msg.text}</p>
+                    )}
+                    <p className="text-xs opacity-70 mt-1 text-right px-1">{format(new Date(msg.timestamp), 'p')}</p>
                   </div>
                   {msg.sender === 'customer' && (
                     <DropdownMenu>
@@ -184,8 +220,16 @@ export function ChatWindow() {
                 className="pr-28 pl-10 h-10"
               />
               <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center">
-                <Button variant="ghost" size="icon" className="h-8 w-8"><Smile className="w-5 h-5 text-muted-foreground" /></Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8"><Paperclip className="w-5 h-5 text-muted-foreground" /></Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8"><Smile className="w-5 h-5 text-muted-foreground" /></Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0 border-0">
+                    <EmojiPicker onEmojiClick={handleEmojiClick} theme={theme === 'dark' ? 'dark' : 'light'} />
+                  </PopoverContent>
+                </Popover>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAttachmentClick}><Paperclip className="w-5 h-5 text-muted-foreground" /></Button>
+                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
               </div>
               <Button onClick={handleSend} disabled={!message.trim() || selectedConversation.customer?.is_blocked} className="absolute right-2 top-1/2 -translate-y-1/2">
                 <Send className="w-4 h-4 mr-2" /> Send

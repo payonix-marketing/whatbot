@@ -1,4 +1,4 @@
-export async function sendMessage(to: string, text: string) {
+export async function sendMessage(to: string, message: { text?: string; attachmentUrl?: string; mimeType?: string; fileName?: string }) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
@@ -7,15 +7,37 @@ export async function sendMessage(to: string, text: string) {
   }
 
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+  let payload: any;
 
-  const payload = {
-    messaging_product: "whatsapp",
-    to: to,
-    type: "text",
-    text: {
-      body: text,
-    },
-  };
+  if (message.attachmentUrl && message.mimeType) {
+    const type = message.mimeType.split('/')[0]; // 'image', 'video', 'audio', 'document'
+    
+    // WhatsApp supports these types directly via URL
+    const supportedTypes = ['image', 'video', 'audio', 'document'];
+    const messageType = supportedTypes.includes(type) ? type : 'document';
+
+    payload = {
+      messaging_product: "whatsapp",
+      to: to,
+      type: messageType,
+      [messageType]: {
+        link: message.attachmentUrl,
+        ...(message.text && { caption: message.text }),
+        ...(messageType === 'document' && message.fileName && { filename: message.fileName }),
+      },
+    };
+  } else if (message.text) {
+    payload = {
+      messaging_product: "whatsapp",
+      to: to,
+      type: "text",
+      text: {
+        body: message.text,
+      },
+    };
+  } else {
+    throw new Error("Message must have either text or an attachment.");
+  }
 
   try {
     const response = await fetch(url, {

@@ -20,6 +20,7 @@ interface ConversationContextType {
   selectedConversation: (Conversation & { customer: Customer | undefined }) | null;
   updateConversation: (id: string, updates: Partial<Conversation>) => void;
   addMessage: (conversationId: string, messageText: string) => void;
+  sendAttachment: (conversationId: string, file: File, caption: string) => Promise<void>;
   deleteMessage: (conversationId: string, messageId: string) => void;
   updateCustomer: (id: string, updates: Partial<Customer>) => void;
   createNewConversation: (phone: string, messageText: string) => Promise<void>;
@@ -204,6 +205,61 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const sendAttachment = async (conversationId: string, file: File, caption: string) => {
+    if (!user) return toast.error("You must be logged in to send attachments.");
+    
+    const conversation = conversations.find(c => c.id === conversationId);
+    const customer = customers.find(c => c.id === conversation?.customer_id);
+    if (!customer || !conversation) return toast.error("Could not find customer for this conversation.");
+    if (customer.is_blocked) return toast.error("Cannot send message to a blocked customer.");
+
+    const toastId = toast.loading("Uploading attachment...");
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const filePath = `${user.id}/${conversationId}/${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, file);
+      if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+
+      const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
+
+      const newMessage: Message = {
+        id: crypto.randomUUID(),
+        text: caption,
+        sender: 'agent',
+        agentId: user.id,
+        timestamp: new Date().toISOString(),
+        attachment: { url: publicUrl, fileName: file.name, fileType: file.type },
+      };
+
+      const updatedMessages = [...(conversation.messages || []), newMessage];
+      const last_message_preview = caption || file.name;
+      setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview } : conv));
+
+      const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview }).eq('id', conversationId);
+      if (dbError) throw new Error(`Failed to save message: ${dbError.message}`);
+
+      toast.loading("Sending message...", { id: toastId });
+
+      const response = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: customer.phone, text: caption, attachmentUrl: publicUrl, mimeType: file.type, fileName: file.name }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
+
+      toast.success("Attachment sent successfully!", { id: toastId });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast.error(`Failed to send attachment: ${errorMessage}`, { id: toastId });
+    }
+  };
+
   const deleteMessage = async (conversationId: string, messageId: string) => {
     const conversation = conversations.find(c => c.id === conversationId);
     if (!conversation) return;
@@ -278,7 +334,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   };
 
   return (
-    <ConversationContext.Provider value={{ conversations, customers, agents, cannedResponses, onlineAgentIds, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation, addCannedResponse, deleteCannedResponse }}>
+    <ConversationContext.Provider value={{ conversations, customers, agents, cannedResponses, onlineAgentIds, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, sendAttachment, deleteMessage, updateCustomer, createNewConversation, addCannedResponse, deleteCannedResponse }}>
       {children}
     </ConversationContext.Provider>
   );

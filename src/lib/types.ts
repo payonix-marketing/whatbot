@@ -14,12 +14,19 @@ export type Customer = {
   is_blocked: boolean;
 };
 
+export type Attachment = {
+  url: string;
+  fileName: string;
+  fileType: string;
+};
+
 export type Message = {
   id: string;
-  text: string;
+  text: string; // Can be a caption for an attachment
   timestamp: string;
   sender: 'customer' | 'agent';
   agentId?: string; // This will be the profile id
+  attachment?: Attachment;
 };
 
 export type Conversation = {

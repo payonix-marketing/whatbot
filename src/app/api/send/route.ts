@@ -3,13 +3,13 @@ import { sendMessage } from '@/lib/whatsapp';
 
 export async function POST(req: NextRequest) {
   try {
-    const { to, text } = await req.json();
+    const { to, text, attachmentUrl, mimeType, fileName } = await req.json();
 
-    if (!to || !text) {
-      return NextResponse.json({ error: 'Missing "to" or "text" field' }, { status: 400 });
+    if (!to || (!text && !attachmentUrl)) {
+      return NextResponse.json({ error: 'Request must include "to" and either "text" or "attachmentUrl"' }, { status: 400 });
     }
 
-    const result = await sendMessage(to, text);
+    const result = await sendMessage(to, { text, attachmentUrl, mimeType, fileName });
 
     return NextResponse.json({ success: true, data: result }, { status: 200 });
   } catch (error) {
