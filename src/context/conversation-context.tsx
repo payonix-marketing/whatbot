@@ -60,7 +60,16 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         toast.info(`New conversation received.`);
       }
       if (payload.eventType === 'UPDATE') {
+        const oldConv = conversations.find(c => c.id === updatedConv.id);
         setConversations(prev => prev.map(conv => (conv.id === updatedConv.id ? updatedConv : conv)));
+        
+        if (oldConv && updatedConv.messages.length > oldConv.messages.length) {
+            const lastMessage = updatedConv.messages[updatedConv.messages.length - 1];
+            if (lastMessage.sender === 'customer') {
+                const customer = customers.find(c => c.id === updatedConv.customer_id);
+                toast.info(`New message from ${customer?.name || 'a customer'}`);
+            }
+        }
       }
     }).subscribe();
 
@@ -78,7 +87,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       supabase.removeChannel(conversationChannel);
       supabase.removeChannel(customerChannel);
     };
-  }, []);
+  }, [conversations, customers]);
 
   const selectedConversation = useMemo(() => {
     if (!selectedConversationId) return null;
