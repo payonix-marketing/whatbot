@@ -17,6 +17,7 @@ interface ConversationContextType {
   addMessage: (conversationId: string, messageText: string) => void;
   deleteMessage: (conversationId: string, messageId: string) => void;
   updateCustomer: (id: string, updates: Partial<Customer>) => void;
+  createNewConversation: (phone: string, messageText: string) => Promise<void>;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
@@ -147,8 +148,54 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     else toast.success("Message deleted.");
   };
 
+  const createNewConversation = async (phone: string, text: string) => {
+    if (!text.trim() || !user) throw new Error("User not authenticated or message is empty.");
+
+    // 1. Find or create customer
+    let { data: customer, error: customerError } = await supabase.from('customers').select('*').eq('phone', phone).single();
+    if (customerError && customerError.code !== 'PGRST116') throw customerError;
+
+    if (!customer) {
+      const { data: newCustomer, error: newCustomerError } = await supabase.from('customers').insert({ phone, name: `Customer ${phone.slice(-4)}` }).select().single();
+      if (newCustomerError) throw newCustomerError;
+      customer = newCustomer;
+    }
+
+    // 2. Create the first message
+    const newMessage: Message = {
+      id: crypto.randomUUID(),
+      text,
+      sender: 'agent',
+      agentId: user.id,
+      timestamp: new Date().toISOString(),
+    };
+
+    // 3. Create the new conversation
+    const { data: newConversation, error: convError } = await supabase.from('conversations').insert({
+      customer_id: customer.id,
+      agent_id: user.id,
+      messages: [newMessage],
+      last_message_preview: text,
+      status: 'mine',
+    }).select().single();
+
+    if (convError) throw convError;
+
+    // 4. Send the message via WhatsApp API
+    const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: phone, text }) });
+    if (!response.ok) {
+      const errorData = await response.json();
+      // Attempt to clean up the created conversation if sending fails
+      await supabase.from('conversations').delete().eq('id', newConversation.id);
+      throw new Error(errorData.error || 'Failed to send message via API');
+    }
+
+    // 5. Select the new conversation
+    setSelectedConversationId(newConversation.id);
+  };
+
   return (
-    <ConversationContext.Provider value={{ conversations, customers, agents, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer }}>
+    <ConversationContext.Provider value={{ conversations, customers, agents, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation }}>
       {children}
     </ConversationContext.Provider>
   );

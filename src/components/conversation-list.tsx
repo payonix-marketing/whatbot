@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import type { Conversation, Customer } from "@/lib/types";
+import { NewConversationDialog } from "./new-conversation-dialog";
 
 export function ConversationList() {
   const { conversations, customers, selectedConversationId, setSelectedConversationId } = useConversations();
@@ -21,7 +22,10 @@ export function ConversationList() {
   return (
     <div className="flex flex-col h-full bg-sidebar">
       <div className="p-4 border-b border-sidebar-border">
-        <h2 className="text-xl font-semibold text-sidebar-foreground">Inbox</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-sidebar-foreground">Inbox</h2>
+          <NewConversationDialog />
+        </div>
         <div className="flex gap-1 mt-4">
           <Button onClick={() => setFilter('new')} variant={filter === 'new' ? 'secondary' : 'ghost'} size="sm" className="flex-1">New</Button>
           <Button onClick={() => setFilter('mine')} variant={filter === 'mine' ? 'secondary' : 'ghost'} size="sm" className="flex-1">Mine</Button>
