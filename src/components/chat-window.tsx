@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { CustomerProfile } from "./customer-profile";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { useTypingIndicator } from "@/hooks/use-typing-indicator";
 
 const DateSeparator = ({ date }: { date: string }) => {
   let formattedDate;
@@ -39,12 +40,13 @@ export function ChatWindow() {
   const [showCannedResponses, setShowCannedResponses] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
+  const { typingUsers, startTyping } = useTypingIndicator(selectedConversation?.id || null);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
-  }, [selectedConversation?.messages]);
+  }, [selectedConversation?.messages, typingUsers]);
 
   useEffect(() => {
     setShowCannedResponses(message.startsWith('/'));
@@ -55,6 +57,11 @@ export function ChatWindow() {
       addMessage(selectedConversation.id, message);
       setMessage("");
     }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMessage(e.target.value);
+    startTyping();
   };
 
   if (!selectedConversation) {
@@ -147,6 +154,15 @@ export function ChatWindow() {
               </React.Fragment>
             );
           })}
+          {typingUsers.length > 0 && (
+            <div className="flex items-end gap-2 justify-start">
+              <div className="p-3 rounded-2xl max-w-md md:max-w-lg bg-muted rounded-bl-lg animate-pulse">
+                <p className="text-sm text-muted-foreground italic">
+                  {typingUsers.map(u => u.name).join(', ')} {typingUsers.length > 1 ? 'are' : 'is'} typing...
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
 
@@ -157,7 +173,7 @@ export function ChatWindow() {
               <Input
                 placeholder="Type a message or / for canned responses..."
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !showCannedResponses) {
                     e.preventDefault();
