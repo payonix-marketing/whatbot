@@ -4,18 +4,22 @@ import { useState, useRef, useEffect } from "react";
 import { useConversations } from "../context/conversation-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, MoreVertical, Trash2, Paperclip, Smile, MessageSquare, Phone } from "lucide-react";
+import { Send, MoreVertical, Trash2, Paperclip, Smile, MessageSquare, Phone, ArrowLeft, User } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials } from "@/lib/utils";
 import { format } from "date-fns";
 import type { Message } from "@/lib/types";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { CustomerProfile } from "./customer-profile";
 
 export function ChatWindow() {
-  const { selectedConversation, addMessage, deleteMessage } = useConversations();
+  const { selectedConversation, addMessage, deleteMessage, setSelectedConversationId } = useConversations();
   const [message, setMessage] = useState("");
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -32,7 +36,7 @@ export function ChatWindow() {
 
   if (!selectedConversation) {
     return (
-      <div className="flex flex-col items-center justify-center h-full bg-muted/20 text-center">
+      <div className="flex flex-col items-center justify-center h-full bg-muted/20 text-center p-4">
         <MessageSquare className="w-16 h-16 text-muted-foreground/50" />
         <h2 className="mt-4 text-xl font-semibold">No Conversation Selected</h2>
         <p className="text-muted-foreground">Please choose a conversation from the list to start chatting.</p>
@@ -42,7 +46,12 @@ export function ChatWindow() {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <header className="flex items-center gap-4 p-3 border-b">
+      <header className="flex items-center gap-2 md:gap-4 p-3 border-b">
+        {isMobile && (
+          <Button variant="ghost" size="icon" onClick={() => setSelectedConversationId(null)}>
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+        )}
         <Avatar>
           <AvatarFallback>{getInitials(selectedConversation.customer?.name)}</AvatarFallback>
         </Avatar>
@@ -50,8 +59,23 @@ export function ChatWindow() {
           <h2 className="text-lg font-semibold">{selectedConversation.customer?.name}</h2>
           <p className="text-sm text-muted-foreground">{selectedConversation.customer?.phone}</p>
         </div>
-        <Button variant="ghost" size="icon"><Phone className="w-5 h-5" /></Button>
-        <Button variant="ghost" size="icon"><MoreVertical className="w-5 h-5" /></Button>
+        {isMobile ? (
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <User className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="p-0 w-full max-w-sm">
+              <CustomerProfile />
+            </SheetContent>
+          </Sheet>
+        ) : (
+          <>
+            <Button variant="ghost" size="icon"><Phone className="w-5 h-5" /></Button>
+            <Button variant="ghost" size="icon"><MoreVertical className="w-5 h-5" /></Button>
+          </>
+        )}
       </header>
       
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
@@ -59,7 +83,7 @@ export function ChatWindow() {
           {selectedConversation.messages.map((msg: Message) => (
             <div key={msg.id} className={`group flex items-end gap-2 ${msg.sender === 'agent' ? 'justify-end flex-row-reverse' : 'justify-start'}`}>
               <div className={`p-3 rounded-lg max-w-xl relative ${msg.sender === 'agent' ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
-                <p className="text-sm">{msg.text}</p>
+                <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
                 <p className="text-xs opacity-70 mt-1 text-right">{format(new Date(msg.timestamp), 'p')}</p>
               </div>
               <DropdownMenu>
