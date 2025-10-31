@@ -17,7 +17,7 @@ import { CustomerProfile } from "./customer-profile";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useTypingIndicator } from "@/hooks/use-typing-indicator";
-import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 import { useTheme } from "next-themes";
 
 const DateSeparator = ({ date }: { date: string }) => {
@@ -135,7 +135,8 @@ export function ChatWindow() {
           {selectedConversation.messages.map((msg: Message, index: number) => {
             const prevMsg = index > 0 ? selectedConversation.messages[index - 1] : null;
             const showDateSeparator = !prevMsg || new Date(msg.timestamp).toDateString() !== new Date(prevMsg.timestamp).toDateString();
-            
+            const attachment = msg.attachment;
+
             return (
               <React.Fragment key={msg.id}>
                 {showDateSeparator && <DateSeparator date={msg.timestamp} />}
@@ -155,14 +156,14 @@ export function ChatWindow() {
                     </DropdownMenu>
                   )}
                   <div className={`p-2 rounded-2xl max-w-md md:max-w-lg relative ${msg.sender === 'agent' ? 'bg-primary text-primary-foreground rounded-br-lg' : 'bg-muted rounded-bl-lg'}`}>
-                    {msg.attachment ? (
+                    {attachment ? (
                       <div className="p-1">
-                        {msg.attachment.fileType.startsWith('image/') ? (
-                          <img src={msg.attachment.url} alt={msg.attachment.fileName} className="max-w-xs rounded-lg cursor-pointer" onClick={() => window.open(msg.attachment.url, '_blank')} />
+                        {attachment.fileType.startsWith('image/') ? (
+                          <img src={attachment.url} alt={attachment.fileName} className="max-w-xs rounded-lg cursor-pointer" onClick={() => window.open(attachment.url, '_blank')} />
                         ) : (
-                          <a href={msg.attachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-background/20 rounded-lg">
+                          <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-background/20 rounded-lg">
                             <FileIcon className="w-6 h-6" />
-                            <span className="truncate">{msg.attachment.fileName}</span>
+                            <span className="truncate">{attachment.fileName}</span>
                           </a>
                         )}
                         {msg.text && <p className="text-sm whitespace-pre-wrap mt-2">{msg.text}</p>}
@@ -225,7 +226,7 @@ export function ChatWindow() {
                     <Button variant="ghost" size="icon" className="h-8 w-8"><Smile className="w-5 h-5 text-muted-foreground" /></Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-full p-0 border-0">
-                    <EmojiPicker onEmojiClick={handleEmojiClick} theme={theme === 'dark' ? 'dark' : 'light'} />
+                    <EmojiPicker onEmojiClick={handleEmojiClick} theme={theme === 'dark' ? Theme.DARK : Theme.LIGHT} />
                   </PopoverContent>
                 </Popover>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAttachmentClick}><Paperclip className="w-5 h-5 text-muted-foreground" /></Button>
