@@ -25,16 +25,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  // Log the full payload for debugging
+  console.log("--- WHATSAPP WEBHOOK RECEIVED ---");
   console.log(JSON.stringify(body, null, 2));
 
   try {
-    // Check if it's a valid WhatsApp message notification
     const messagePayload = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
     const contactPayload = body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0];
 
     if (!messagePayload || messagePayload.type !== 'text') {
-      // Not a text message or not a message payload, so we can ignore it
+      console.log("Webhook ignored: Not a text message payload.");
       return new NextResponse('OK', { status: 200 });
     }
 
@@ -42,6 +41,7 @@ export async function POST(req: NextRequest) {
     const customerName = contactPayload.profile.name;
     const messageText = messagePayload.text.body;
     const messageId = messagePayload.id;
+    console.log(`Processing message from ${customerName} (${customerPhone})`);
 
     // 1. Find or create the customer
     let { data: customer, error: customerError } = await supabase
@@ -50,18 +50,26 @@ export async function POST(req: NextRequest) {
       .eq('phone', customerPhone)
       .single();
 
-    if (customerError && customerError.code !== 'PGRST116') { // PGRST116 = no rows found
+    if (customerError && customerError.code !== 'PGRST116') {
+      console.error("Error finding customer:", customerError);
       throw customerError;
     }
 
     if (!customer) {
+      console.log("Customer not found. Creating new customer.");
       const { data: newCustomer, error: newCustomerError } = await supabase
         .from('customers')
         .insert({ phone: customerPhone, name: customerName })
         .select()
         .single();
-      if (newCustomerError) throw newCustomerError;
+      if (newCustomerError) {
+        console.error("Error creating new customer:", newCustomerError);
+        throw newCustomerError;
+      }
       customer = newCustomer;
+      console.log(`New customer created with ID: ${customer.id}`);
+    } else {
+      console.log(`Customer found with ID: ${customer.id}`);
     }
 
     // 2. Find an active conversation or create a new one
@@ -72,7 +80,10 @@ export async function POST(req: NextRequest) {
       .neq('status', 'resolved')
       .maybeSingle();
 
-    if (convError) throw convError;
+    if (convError) {
+      console.error("Error finding conversation:", convError);
+      throw convError;
+    }
 
     const newMessage: Message = {
       id: messageId,
@@ -82,7 +93,7 @@ export async function POST(req: NextRequest) {
     };
 
     if (conversation) {
-      // 3a. Add message to existing conversation
+      console.log(`Existing conversation found (ID: ${conversation.id}). Appending message.`);
       const updatedMessages = [...conversation.messages, newMessage];
       const { error: updateError } = await supabase
         .from('conversations')
@@ -90,13 +101,17 @@ export async function POST(req: NextRequest) {
           messages: updatedMessages,
           last_message_preview: messageText,
           unread_count: conversation.unread_count + 1,
-          status: 'new', // Re-open if it was assigned
+          status: 'new',
           updated_at: new Date().toISOString(),
         })
         .eq('id', conversation.id);
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error("Error updating conversation:", updateError);
+        throw updateError;
+      }
+      console.log("Conversation updated successfully.");
     } else {
-      // 3b. Create a new conversation
+      console.log("No active conversation found. Creating new one.");
       const { error: insertError } = await supabase
         .from('conversations')
         .insert({
@@ -106,7 +121,11 @@ export async function POST(req: NextRequest) {
           unread_count: 1,
           status: 'new',
         });
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error("Error inserting new conversation:", insertError);
+        throw insertError;
+      }
+      console.log("New conversation created successfully.");
     }
 
     return new NextResponse('OK', { status: 200 });
