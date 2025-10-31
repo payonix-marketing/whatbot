@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     console.log('WEBHOOK_VERIFIED');
     return new NextResponse(challenge, { status: 200 });
   } else {
+    console.error('Webhook verification failed. Check WHATSAPP_VERIFY_TOKEN.');
     return new NextResponse('Forbidden', { status: 403 });
   }
 }
@@ -30,17 +31,18 @@ export async function POST(req: NextRequest) {
 
   try {
     const messagePayload = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    const contactPayload = body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0];
-
+    
     if (!messagePayload || messagePayload.type !== 'text') {
       console.log("Webhook ignored: Not a text message payload.");
       return new NextResponse('OK', { status: 200 });
     }
 
+    const contactPayload = body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0];
     const customerPhone = messagePayload.from;
-    const customerName = contactPayload.profile.name;
+    const customerName = contactPayload?.profile?.name || `Customer ${customerPhone.slice(-4)}`;
     const messageText = messagePayload.text.body;
     const messageId = messagePayload.id;
+    
     console.log(`Processing message from ${customerName} (${customerPhone})`);
 
     // 1. Find or create the customer
@@ -68,6 +70,16 @@ export async function POST(req: NextRequest) {
       }
       customer = newCustomer;
       console.log(`New customer created with ID: ${customer.id}`);
+    } else if (contactPayload && customer.name !== contactPayload.profile.name) {
+      // If customer exists and we received an updated name, update it
+      console.log(`Updating customer name for ${customer.phone}`);
+      const { error: updateCustomerError } = await supabase
+        .from('customers')
+        .update({ name: contactPayload.profile.name })
+        .eq('id', customer.id);
+      if (updateCustomerError) {
+        console.error("Error updating customer name:", updateCustomerError);
+      }
     } else {
       console.log(`Customer found with ID: ${customer.id}`);
     }
@@ -100,7 +112,7 @@ export async function POST(req: NextRequest) {
         .update({
           messages: updatedMessages,
           last_message_preview: messageText,
-          unread_count: conversation.unread_count + 1,
+          unread_count: (conversation.unread_count || 0) + 1,
           status: 'new',
           updated_at: new Date().toISOString(),
         })
