@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import type { Conversation, Customer } from "@/lib/types";
 import { NewConversationDialog } from "./new-conversation-dialog";
+import { UserNav } from "./user-nav";
 
 export function ConversationList() {
   const { conversations, customers, selectedConversationId, setSelectedConversationId } = useConversations();
@@ -63,6 +64,9 @@ export function ConversationList() {
             <p className="text-muted-foreground">No conversations found.</p>
           </div>
         )}
+      </div>
+      <div className="p-2 border-t border-sidebar-border">
+        <UserNav />
       </div>
     </div>
   );
