@@ -57,8 +57,8 @@ export function CustomerProfile() {
         <div>
           <Label>Assign to</Label>
            <Select
-            value={selectedConversation.agentId}
-            onValueChange={(value) => updateConversation(selectedConversation.id, { agentId: value })}
+            value={selectedConversation.agent_id || ''}
+            onValueChange={(value) => updateConversation(selectedConversation.id, { agent_id: value })}
            >
             <SelectTrigger>
               <SelectValue placeholder="Assign agent" />
@@ -76,8 +76,8 @@ export function CustomerProfile() {
             id="internal-notes"
             placeholder="Add a note..."
             className="mt-1"
-            value={selectedConversation.internalNotes}
-            onChange={(e) => updateConversation(selectedConversation.id, { internalNotes: e.target.value })}
+            value={selectedConversation.internal_notes || ''}
+            onChange={(e) => updateConversation(selectedConversation.id, { internal_notes: e.target.value })}
           />
         </div>
         <Button className="w-full" onClick={handleNoteSave}>Save Note</Button>

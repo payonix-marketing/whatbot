@@ -27,7 +27,7 @@ export function ConversationList() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {filteredConversations.map((conv: Conversation) => {
-          const customer = customers.find((c: Customer) => c.id === conv.customerId);
+          const customer = customers.find((c: Customer) => c.id === conv.customer_id);
           const isSelected = conv.id === selectedConversationId;
           return (
             <div
@@ -40,13 +40,13 @@ export function ConversationList() {
             >
               <div className="flex justify-between">
                 <h3 className={cn("font-semibold", isSelected ? "text-sidebar-accent-foreground" : "text-sidebar-foreground")}>{customer?.name}</h3>
-                {conv.unreadCount > 0 && (
+                {conv.unread_count > 0 && (
                   <span className="flex items-center justify-center w-5 h-5 text-xs text-primary-foreground bg-primary rounded-full">
-                    {conv.unreadCount}
+                    {conv.unread_count}
                   </span>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground truncate">{conv.lastMessagePreview}</p>
+              <p className="text-sm text-muted-foreground truncate">{conv.last_message_preview}</p>
             </div>
           );
         })}

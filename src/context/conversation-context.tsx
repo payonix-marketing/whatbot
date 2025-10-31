@@ -1,7 +1,6 @@
 "use client";
 
 import React, { createContext, useContext, useState, useMemo } from 'react';
-import { conversations as initialConversations, customers, agents } from '@/lib/data';
 import type { Conversation, Message, Customer, Agent } from '@/lib/types';
 import { toast } from "sonner";
 
@@ -19,16 +18,18 @@ interface ConversationContextType {
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
 
 export function ConversationProvider({ children }: { children: React.ReactNode }) {
-  const [conversations, setConversations] = useState<Conversation[]>(initialConversations);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(conversations[0]?.id || null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
 
   const selectedConversation = useMemo(() => {
     if (!selectedConversationId) return null;
     const conversation = conversations.find(c => c.id === selectedConversationId);
     if (!conversation) return null;
-    const customer = customers.find(cust => cust.id === conversation.customerId);
+    const customer = customers.find((cust: Customer) => cust.id === conversation.customer_id);
     return { ...conversation, customer };
-  }, [selectedConversationId, conversations]);
+  }, [selectedConversationId, conversations, customers]);
 
   const updateConversation = (id: string, updates: Partial<Conversation>) => {
     setConversations(prev =>
@@ -39,8 +40,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const addMessage = async (conversationId: string, text: string) => {
     if (!text.trim()) return;
 
-    const conversation = conversations.find(c => c.id === conversationId);
-    const customer = customers.find(c => c.id === conversation?.customerId);
+    const conversation = conversations.find((c: Conversation) => c.id === conversationId);
+    const customer = customers.find((c: Customer) => c.id === conversation?.customer_id);
 
     if (!customer) {
       toast.error("Could not find customer for this conversation.");
@@ -62,7 +63,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
           return {
             ...conv,
             messages: [...conv.messages, newMessage],
-            lastMessagePreview: text,
+            last_message_preview: text,
           };
         }
         return conv;
