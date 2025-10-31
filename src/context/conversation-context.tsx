@@ -89,9 +89,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   }, [selectedConversationId, conversations, customers]);
 
   const updateConversation = async (id: string, updates: Partial<Conversation>) => {
+    // Optimistic update for smoother UI
     setConversations(prev => prev.map(conv => (conv.id === id ? { ...conv, ...updates } : conv)));
     const { error } = await supabase.from('conversations').update(updates).eq('id', id);
-    if (error) toast.error(`Failed to update conversation: ${error.message}`);
+    if (error) {
+      toast.error(`Failed to update conversation: ${error.message}`);
+      // Revert on error if needed, though it might cause UI jumps
+    }
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
@@ -117,19 +121,26 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       timestamp: new Date().toISOString(),
     };
 
-    const updatedMessages = [...conversation.messages, newMessage];
-    setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview: text } : conv));
-
-    const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: text }).eq('id', conversationId);
-    if (dbError) return toast.error(`Failed to save message: ${dbError.message}`);
-
     try {
+      // 1. Attempt to send the message via the API first
       const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: customer.phone, text }) });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to send message');
       }
       toast.success("Message sent!");
+
+      // 2. If successful, update the database
+      const updatedMessages = [...conversation.messages, newMessage];
+      const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: text }).eq('id', conversationId);
+      if (dbError) {
+        // This is a state inconsistency, but we should notify the user.
+        toast.error(`Message sent, but failed to save to DB: ${dbError.message}`);
+      } else {
+        // 3. If DB is updated, update local state
+        setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview: text } : conv));
+      }
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       toast.error(`Error: ${errorMessage}`);
@@ -151,7 +162,14 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const createNewConversation = async (phone: string, text: string) => {
     if (!text.trim() || !user) throw new Error("User not authenticated or message is empty.");
 
-    // 1. Find or create customer
+    // 1. Send the message via WhatsApp API first
+    const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: phone, text }) });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to send message via API');
+    }
+
+    // 2. Find or create customer
     let { data: customer, error: customerError } = await supabase.from('customers').select('*').eq('phone', phone).single();
     if (customerError && customerError.code !== 'PGRST116') throw customerError;
 
@@ -161,7 +179,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       customer = newCustomer;
     }
 
-    // 2. Create the first message
+    // 3. Create the first message
     const newMessage: Message = {
       id: crypto.randomUUID(),
       text,
@@ -170,7 +188,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       timestamp: new Date().toISOString(),
     };
 
-    // 3. Create the new conversation
+    // 4. Create the new conversation
     const { data: newConversation, error: convError } = await supabase.from('conversations').insert({
       customer_id: customer.id,
       agent_id: user.id,
@@ -180,16 +198,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }).select().single();
 
     if (convError) throw convError;
-
-    // 4. Send the message via WhatsApp API
-    const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: phone, text }) });
-    if (!response.ok) {
-      const errorData = await response.json();
-      // Attempt to clean up the created conversation if sending fails
-      await supabase.from('conversations').delete().eq('id', newConversation.id);
-      throw new Error(errorData.error || 'Failed to send message via API');
-    }
-
+    
     // 5. Select the new conversation
     setSelectedConversationId(newConversation.id);
   };

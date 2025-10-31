@@ -18,10 +18,6 @@ import type { Agent } from "@/lib/types";
 export function CustomerProfile() {
   const { selectedConversation, updateConversation, agents, updateCustomer } = useConversations();
 
-  const handleNoteSave = () => {
-    toast.success("Note saved!");
-  };
-
   const handleBlockToggle = () => {
     if (!selectedConversation || !selectedConversation.customer) return;
     const isBlocked = selectedConversation.customer.is_blocked;
@@ -90,7 +86,6 @@ export function CustomerProfile() {
             onChange={(e) => updateConversation(selectedConversation.id, { internal_notes: e.target.value })}
           />
         </div>
-        <Button className="w-full" onClick={handleNoteSave}>Save Note</Button>
         <Button
           className="w-full"
           variant={selectedConversation.customer?.is_blocked ? "secondary" : "destructive"}
