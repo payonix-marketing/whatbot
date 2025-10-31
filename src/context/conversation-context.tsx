@@ -10,6 +10,7 @@ interface ConversationContextType {
   conversations: Conversation[];
   customers: Customer[];
   agents: Agent[];
+  loading: boolean;
   selectedConversationId: string | null;
   setSelectedConversationId: (id: string | null) => void;
   selectedConversation: (Conversation & { customer: Customer | undefined }) | null;
@@ -27,10 +28,12 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       try {
         const { data: customersData, error: customersError } = await supabase.from('customers').select('*');
         if (customersError) throw customersError;
@@ -47,6 +50,8 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
         toast.error(`Failed to fetch data: ${errorMessage}`);
+      } finally {
+        setLoading(false);
       }
     };
     fetchData();
@@ -215,7 +220,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   };
 
   return (
-    <ConversationContext.Provider value={{ conversations, customers, agents, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation }}>
+    <ConversationContext.Provider value={{ conversations, customers, agents, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation }}>
       {children}
     </ConversationContext.Provider>
   );

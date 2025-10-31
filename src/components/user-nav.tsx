@@ -12,13 +12,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getInitials } from "@/lib/utils";
+import { useState } from "react";
+import { EditProfileDialog } from "./edit-profile-dialog";
 
 export function UserNav() {
   const { profile } = useAuth();
   const router = useRouter();
+  const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -26,33 +29,41 @@ export function UserNav() {
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-10 w-full justify-start gap-2 px-2">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={profile?.avatar_url || ''} alt={profile?.name || 'Agent'} />
-            <AvatarFallback>{getInitials(profile?.name)}</AvatarFallback>
-          </Avatar>
-          <div className="flex flex-col items-start">
-            <span className="font-medium text-sm">{profile?.name || 'Agent'}</span>
-          </div>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
-        <DropdownMenuLabel className="font-normal">
-          <div className="flex flex-col space-y-1">
-            <p className="text-sm font-medium leading-none">{profile?.name}</p>
-            <p className="text-xs leading-none text-muted-foreground">
-              {profile?.id ? `ID: ${profile.id.substring(0, 8)}...` : ''}
-            </p>
-          </div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout} className="focus:bg-destructive/10 focus:text-destructive">
-          <LogOut className="mr-2 h-4 w-4" />
-          <span>Log out</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="relative h-10 w-full justify-start gap-2 px-2">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={profile?.avatar_url || ''} alt={profile?.name || 'Agent'} />
+              <AvatarFallback>{getInitials(profile?.name)}</AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col items-start">
+              <span className="font-medium text-sm">{profile?.name || 'Agent'}</span>
+            </div>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-56" align="end" forceMount>
+          <DropdownMenuLabel className="font-normal">
+            <div className="flex flex-col space-y-1">
+              <p className="text-sm font-medium leading-none">{profile?.name}</p>
+              <p className="text-xs leading-none text-muted-foreground">
+                {profile?.id ? `ID: ${profile.id.substring(0, 8)}...` : ''}
+              </p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => setIsProfileDialogOpen(true)}>
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Profile Settings</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleLogout} className="focus:bg-destructive/10 focus:text-destructive">
+            <LogOut className="mr-2 h-4 w-4" />
+            <span>Log out</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <EditProfileDialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
+    </>
   );
 }

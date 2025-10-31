@@ -11,11 +11,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ConversationListSkeleton } from "./conversation-list-skeleton";
 
 export function ConversationList() {
-  const { conversations, customers, selectedConversationId, setSelectedConversationId } = useConversations();
+  const { conversations, customers, selectedConversationId, setSelectedConversationId, loading } = useConversations();
   const { user } = useAuth();
   const [filter, setFilter] = useState<Conversation['status'] | 'all'>('new');
+
+  if (loading) {
+    return <ConversationListSkeleton />;
+  }
 
   const getFilteredConversations = (status: Conversation['status'] | 'all') => {
     return conversations.filter((conv: Conversation) => {
