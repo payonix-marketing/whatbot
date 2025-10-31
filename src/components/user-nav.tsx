@@ -32,13 +32,14 @@ export function UserNav() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="relative h-10 w-full justify-start gap-2 px-2">
-            <Avatar className="h-8 w-8">
+          <Button variant="ghost" className="relative h-12 w-full justify-start gap-3 px-3 text-left hover:bg-sidebar-accent/50">
+            <Avatar className="h-9 w-9">
               <AvatarImage src={profile?.avatar_url || ''} alt={profile?.name || 'Agent'} />
               <AvatarFallback>{getInitials(profile?.name)}</AvatarFallback>
             </Avatar>
-            <div className="flex flex-col items-start">
-              <span className="font-medium text-sm">{profile?.name || 'Agent'}</span>
+            <div className="flex flex-col items-start overflow-hidden">
+              <span className="font-medium text-sm truncate">{profile?.name || 'Agent'}</span>
+              <span className="text-xs text-sidebar-foreground/60 truncate">Support Agent</span>
             </div>
           </Button>
         </DropdownMenuTrigger>

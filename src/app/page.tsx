@@ -32,11 +32,11 @@ function ChatLayout() {
       direction="horizontal"
       className="h-full max-h-screen items-stretch"
     >
-      <ResizablePanel defaultSize={25} minSize={20} maxSize={35}>
+      <ResizablePanel defaultSize={30} minSize={25} maxSize={40}>
         <ConversationList />
       </ResizablePanel>
       <ResizableHandle withHandle />
-      <ResizablePanel defaultSize={50} minSize={30}>
+      <ResizablePanel defaultSize={45} minSize={30}>
         <ChatWindow />
       </ResizablePanel>
       <ResizableHandle withHandle />
