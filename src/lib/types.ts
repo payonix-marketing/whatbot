@@ -37,3 +37,10 @@ export type Conversation = {
 
 // Renaming Agent to Profile to match database
 export type Agent = Profile;
+
+export type CannedResponse = {
+  id: string;
+  shortcut: string;
+  message: string;
+  created_at: string;
+};

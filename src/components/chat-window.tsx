@@ -11,9 +11,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
 import type { Message } from "@/lib/types";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { CustomerProfile } from "./customer-profile";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 
 const DateSeparator = ({ date }: { date: string }) => {
   let formattedDate;
@@ -32,8 +34,9 @@ const DateSeparator = ({ date }: { date: string }) => {
 };
 
 export function ChatWindow() {
-  const { selectedConversation, addMessage, deleteMessage, setSelectedConversationId } = useConversations();
+  const { selectedConversation, addMessage, deleteMessage, setSelectedConversationId, cannedResponses } = useConversations();
   const [message, setMessage] = useState("");
+  const [showCannedResponses, setShowCannedResponses] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
@@ -42,6 +45,10 @@ export function ChatWindow() {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [selectedConversation?.messages]);
+
+  useEffect(() => {
+    setShowCannedResponses(message.startsWith('/'));
+  }, [message]);
 
   const handleSend = () => {
     if (selectedConversation && message.trim()) {
@@ -144,23 +151,57 @@ export function ChatWindow() {
       </ScrollArea>
 
       <footer className="p-3 border-t bg-background">
-        <div className="relative">
-          <Input
-            placeholder="Type a message..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            disabled={selectedConversation.customer?.is_blocked}
-            className="pr-28 pl-10 h-10"
-          />
-          <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center">
-            <Button variant="ghost" size="icon" className="h-8 w-8"><Smile className="w-5 h-5 text-muted-foreground" /></Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8"><Paperclip className="w-5 h-5 text-muted-foreground" /></Button>
-          </div>
-          <Button onClick={handleSend} disabled={!message.trim() || selectedConversation.customer?.is_blocked} className="absolute right-2 top-1/2 -translate-y-1/2">
-            <Send className="w-4 h-4 mr-2" /> Send
-          </Button>
-        </div>
+        <Popover open={showCannedResponses} onOpenChange={setShowCannedResponses}>
+          <PopoverTrigger asChild>
+            <div className="relative">
+              <Input
+                placeholder="Type a message or / for canned responses..."
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !showCannedResponses) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                disabled={selectedConversation.customer?.is_blocked}
+                className="pr-28 pl-10 h-10"
+              />
+              <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center">
+                <Button variant="ghost" size="icon" className="h-8 w-8"><Smile className="w-5 h-5 text-muted-foreground" /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8"><Paperclip className="w-5 h-5 text-muted-foreground" /></Button>
+              </div>
+              <Button onClick={handleSend} disabled={!message.trim() || selectedConversation.customer?.is_blocked} className="absolute right-2 top-1/2 -translate-y-1/2">
+                <Send className="w-4 h-4 mr-2" /> Send
+              </Button>
+            </div>
+          </PopoverTrigger>
+          <PopoverContent className="w-[400px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search canned responses..." />
+              <CommandList>
+                <CommandEmpty>No results found.</CommandEmpty>
+                <CommandGroup>
+                  {cannedResponses.map((response) => (
+                    <CommandItem
+                      key={response.id}
+                      value={response.shortcut}
+                      onSelect={() => {
+                        setMessage(response.message);
+                        setShowCannedResponses(false);
+                      }}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold">{response.shortcut}</span>
+                        <span className="text-muted-foreground text-xs">{response.message}</span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
         {selectedConversation.customer?.is_blocked && (
           <p className="text-sm text-destructive text-center mt-2">This customer is blocked. You cannot send messages.</p>
         )}

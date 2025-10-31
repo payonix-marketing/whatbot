@@ -12,16 +12,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut, Settings, MessageSquareQuote } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getInitials } from "@/lib/utils";
 import { useState } from "react";
 import { EditProfileDialog } from "./edit-profile-dialog";
+import { CannedResponsesDialog } from "./canned-responses-dialog";
 
 export function UserNav() {
   const { profile } = useAuth();
   const router = useRouter();
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
+  const [isCannedResponsesOpen, setIsCannedResponsesOpen] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -57,6 +59,10 @@ export function UserNav() {
             <Settings className="mr-2 h-4 w-4" />
             <span>Profile Settings</span>
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setIsCannedResponsesOpen(true)}>
+            <MessageSquareQuote className="mr-2 h-4 w-4" />
+            <span>Canned Responses</span>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleLogout} className="focus:bg-destructive/10 focus:text-destructive">
             <LogOut className="mr-2 h-4 w-4" />
@@ -65,6 +71,7 @@ export function UserNav() {
         </DropdownMenuContent>
       </DropdownMenu>
       <EditProfileDialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
+      <CannedResponsesDialog open={isCannedResponsesOpen} onOpenChange={setIsCannedResponsesOpen} />
     </>
   );
 }

@@ -5,7 +5,7 @@ import { ConversationList } from "@/components/conversation-list";
 import { ChatWindow } from "@/components/chat-window";
 import { CustomerProfile } from "@/components/customer-profile";
 import { ConversationProvider, useConversations } from "@/context/conversation-context";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { cn } from "@/lib/utils";
 
 function ChatLayout() {

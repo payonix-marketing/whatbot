@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
-import type { Conversation, Message, Customer, Agent } from '@/lib/types';
+import type { Conversation, Message, Customer, Agent, CannedResponse } from '@/lib/types';
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './auth-context';
@@ -10,6 +10,7 @@ interface ConversationContextType {
   conversations: Conversation[];
   customers: Customer[];
   agents: Agent[];
+  cannedResponses: CannedResponse[];
   loading: boolean;
   selectedConversationId: string | null;
   setSelectedConversationId: (id: string | null) => void;
@@ -19,6 +20,8 @@ interface ConversationContextType {
   deleteMessage: (conversationId: string, messageId: string) => void;
   updateCustomer: (id: string, updates: Partial<Customer>) => void;
   createNewConversation: (phone: string, messageText: string) => Promise<void>;
+  addCannedResponse: (shortcut: string, message: string) => Promise<void>;
+  deleteCannedResponse: (id: string) => Promise<void>;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
@@ -27,6 +30,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
@@ -35,17 +39,27 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     const fetchData = async () => {
       setLoading(true);
       try {
-        const { data: customersData, error: customersError } = await supabase.from('customers').select('*');
+        const [
+          { data: customersData, error: customersError },
+          { data: agentsData, error: agentsError },
+          { data: conversationsData, error: conversationsError },
+          { data: cannedResponsesData, error: cannedResponsesError },
+        ] = await Promise.all([
+          supabase.from('customers').select('*'),
+          supabase.from('profiles').select('*'),
+          supabase.from('conversations').select('*').order('updated_at', { ascending: false }),
+          supabase.from('canned_responses').select('*').order('shortcut', { ascending: true }),
+        ]);
+
         if (customersError) throw customersError;
-        setCustomers(customersData || []);
-
-        const { data: agentsData, error: agentsError } = await supabase.from('profiles').select('*');
         if (agentsError) throw agentsError;
-        setAgents(agentsData || []);
-
-        const { data: conversationsData, error: conversationsError } = await supabase.from('conversations').select('*').order('updated_at', { ascending: false });
         if (conversationsError) throw conversationsError;
+        if (cannedResponsesError) throw cannedResponsesError;
+
+        setCustomers(customersData || []);
+        setAgents(agentsData || []);
         setConversations(conversationsData || []);
+        setCannedResponses(cannedResponsesData || []);
 
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
@@ -88,9 +102,19 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       }
     }).subscribe();
 
+    const cannedResponseChannel = supabase.channel('realtime-canned-responses').on('postgres_changes', { event: '*', schema: 'public', table: 'canned_responses' }, payload => {
+      if (payload.eventType === 'INSERT') {
+        setCannedResponses(prev => [...prev, payload.new as CannedResponse].sort((a, b) => a.shortcut.localeCompare(b.shortcut)));
+      }
+      if (payload.eventType === 'DELETE') {
+        setCannedResponses(prev => prev.filter(cr => cr.id !== (payload.old as CannedResponse).id));
+      }
+    }).subscribe();
+
     return () => {
       supabase.removeChannel(conversationChannel);
       supabase.removeChannel(customerChannel);
+      supabase.removeChannel(cannedResponseChannel);
     };
   }, [conversations, customers]);
 
@@ -131,12 +155,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       timestamp: new Date().toISOString(),
     };
 
-    // 1. Optimistic UI update
     const originalConversation = { ...conversation };
     const updatedMessages = [...(conversation.messages || []), newMessage];
     setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview: text } : conv));
 
-    // 2. Update the database
     const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: text }).eq('id', conversationId);
 
     if (dbError) {
@@ -145,7 +167,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       return;
     }
 
-    // 3. Send message via API
     try {
       const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: customer.phone, text }) });
       if (!response.ok) {
@@ -173,7 +194,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const createNewConversation = async (phone: string, text: string) => {
     if (!text.trim() || !user) throw new Error("User not authenticated or message is empty.");
 
-    // 1. Find or create customer
     let { data: customer, error: customerError } = await supabase.from('customers').select('*').eq('phone', phone).single();
     if (customerError && customerError.code !== 'PGRST116') throw customerError;
 
@@ -183,7 +203,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       customer = newCustomer;
     }
 
-    // 2. Create the first message
     const newMessage: Message = {
       id: crypto.randomUUID(),
       text,
@@ -192,7 +211,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       timestamp: new Date().toISOString(),
     };
 
-    // 3. Create the new conversation in DB
     const { data: newConversation, error: convError } = await supabase.from('conversations').insert({
       customer_id: customer.id,
       agent_id: user.id,
@@ -205,7 +223,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     
     setSelectedConversationId(newConversation.id);
 
-    // 4. Send the message via WhatsApp API
     try {
       const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: phone, text }) });
       if (!response.ok) {
@@ -219,8 +236,24 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const addCannedResponse = async (shortcut: string, message: string) => {
+    const { error } = await supabase.from('canned_responses').insert({ shortcut, message });
+    if (error) {
+      toast.error(`Failed to add canned response: ${error.message}`);
+      throw error;
+    }
+  };
+
+  const deleteCannedResponse = async (id: string) => {
+    const { error } = await supabase.from('canned_responses').delete().eq('id', id);
+    if (error) {
+      toast.error(`Failed to delete canned response: ${error.message}`);
+      throw error;
+    }
+  };
+
   return (
-    <ConversationContext.Provider value={{ conversations, customers, agents, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation }}>
+    <ConversationContext.Provider value={{ conversations, customers, agents, cannedResponses, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation, addCannedResponse, deleteCannedResponse }}>
       {children}
     </ConversationContext.Provider>
   );
