@@ -78,16 +78,19 @@ export function CustomerProfile() {
             <div>
               <Label>Assign to</Label>
               <Select
-                value={selectedConversation.agent_id || ''}
-                onValueChange={(value) => updateConversation(selectedConversation.id, { agent_id: value })}
+                value={selectedConversation.agent_id || 'unassigned'}
+                onValueChange={(value) => {
+                  const newAgentId = value === 'unassigned' ? null : value;
+                  updateConversation(selectedConversation.id, { agent_id: newAgentId });
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Assign agent" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {agents.map((agent: Agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
+                    <SelectItem key={agent.id} value={agent.id}>{agent.name || 'Unnamed Agent'}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
