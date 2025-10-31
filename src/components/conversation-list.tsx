@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { MessageSquareText, Search } from "lucide-react";
 
 export function ConversationList() {
-  const { conversations, customers, agents, selectedConversationId, setSelectedConversationId, loading } = useConversations();
+  const { conversations, customers, agents, selectedConversationId, setSelectedConversationId, loading, onlineAgentIds } = useConversations();
   const { user } = useAuth();
   const [filter, setFilter] = useState<Conversation['status'] | 'all'>('new');
   const [searchTerm, setSearchTerm] = useState("");
@@ -60,6 +60,7 @@ export function ConversationList() {
       const customer = customers.find((c: Customer) => c.id === conv.customer_id);
       const agent = agents.find((a: Agent) => a.id === conv.agent_id);
       const isSelected = conv.id === selectedConversationId;
+      const isAgentOnline = agent ? onlineAgentIds.includes(agent.id) : false;
       const lastMessageTimestamp = conv.messages.length > 0 
         ? new Date(conv.messages[conv.messages.length - 1].timestamp) 
         : new Date(conv.updated_at);
@@ -87,10 +88,13 @@ export function ConversationList() {
               <p className="text-sm text-sidebar-foreground/80 truncate">{conv.last_message_preview}</p>
               <div className="flex items-center gap-1 shrink-0 ml-2">
                 {agent && (
-                  <Avatar className="h-5 w-5">
-                    <AvatarImage src={agent.avatar_url || ''} alt={agent.name || 'Agent'} />
-                    <AvatarFallback className="text-xs">{getInitials(agent.name)}</AvatarFallback>
-                  </Avatar>
+                  <div className="relative">
+                    <Avatar className="h-5 w-5">
+                      <AvatarImage src={agent.avatar_url || ''} alt={agent.name || 'Agent'} />
+                      <AvatarFallback className="text-xs">{getInitials(agent.name)}</AvatarFallback>
+                    </Avatar>
+                    {isAgentOnline && <span className="absolute bottom-[-1px] right-[-1px] block h-2 w-2 rounded-full bg-green-500 ring-1 ring-sidebar" />}
+                  </div>
                 )}
                 {conv.unread_count > 0 && (
                   <span className="flex items-center justify-center w-5 h-5 text-xs font-bold text-primary-foreground bg-primary rounded-full">

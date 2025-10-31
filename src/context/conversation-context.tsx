@@ -6,12 +6,14 @@ import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './auth-context';
 import { useNotifications } from '@/hooks/use-notifications';
+import { usePresence } from '@/hooks/use-presence';
 
 interface ConversationContextType {
   conversations: Conversation[];
   customers: Customer[];
   agents: Agent[];
   cannedResponses: CannedResponse[];
+  onlineAgentIds: string[];
   loading: boolean;
   selectedConversationId: string | null;
   setSelectedConversationId: (id: string | null) => void;
@@ -36,6 +38,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { requestPermission, showNotification, permission } = useNotifications();
+  const onlineAgentIds = usePresence();
 
   useEffect(() => {
     if (permission === 'default') {
@@ -275,7 +278,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   };
 
   return (
-    <ConversationContext.Provider value={{ conversations, customers, agents, cannedResponses, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation, addCannedResponse, deleteCannedResponse }}>
+    <ConversationContext.Provider value={{ conversations, customers, agents, cannedResponses, onlineAgentIds, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, deleteMessage, updateCustomer, createNewConversation, addCannedResponse, deleteCannedResponse }}>
       {children}
     </ConversationContext.Provider>
   );

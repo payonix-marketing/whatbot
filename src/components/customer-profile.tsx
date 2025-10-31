@@ -21,7 +21,7 @@ import { User, ShieldAlert } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 
 export function CustomerProfile() {
-  const { selectedConversation, updateConversation, agents, updateCustomer } = useConversations();
+  const { selectedConversation, updateConversation, agents, updateCustomer, onlineAgentIds } = useConversations();
 
   const handleBlockToggle = () => {
     if (!selectedConversation || !selectedConversation.customer) return;
@@ -90,9 +90,17 @@ export function CustomerProfile() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {agents.map((agent: Agent) => (
-                      <SelectItem key={agent.id} value={agent.id}>{agent.name || 'Unnamed Agent'}</SelectItem>
-                    ))}
+                    {agents.map((agent: Agent) => {
+                      const isOnline = onlineAgentIds.includes(agent.id);
+                      return (
+                        <SelectItem key={agent.id} value={agent.id}>
+                          <div className="flex items-center gap-2">
+                            <span className={`h-2 w-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
+                            <span>{agent.name || 'Unnamed Agent'}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>

@@ -22,13 +22,17 @@ import { useState } from "react";
 import { EditProfileDialog } from "./edit-profile-dialog";
 import { CannedResponsesDialog } from "./canned-responses-dialog";
 import { useTheme } from "next-themes";
+import { useConversations } from "@/context/conversation-context";
 
 export function UserNav() {
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
+  const { onlineAgentIds } = useConversations();
   const router = useRouter();
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isCannedResponsesOpen, setIsCannedResponsesOpen] = useState(false);
   const { setTheme } = useTheme();
+
+  const isOnline = user ? onlineAgentIds.includes(user.id) : false;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -40,10 +44,13 @@ export function UserNav() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="relative h-12 w-full justify-start gap-3 px-3 text-left hover:bg-sidebar-accent/50">
-            <Avatar className="h-9 w-9">
-              <AvatarImage src={profile?.avatar_url || ''} alt={profile?.name || 'Agent'} />
-              <AvatarFallback>{getInitials(profile?.name)}</AvatarFallback>
-            </Avatar>
+            <div className="relative">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={profile?.avatar_url || ''} alt={profile?.name || 'Agent'} />
+                <AvatarFallback>{getInitials(profile?.name)}</AvatarFallback>
+              </Avatar>
+              {isOnline && <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-green-500 ring-2 ring-sidebar" />}
+            </div>
             <div className="flex flex-col items-start overflow-hidden">
               <span className="font-medium text-sm truncate">{profile?.name || 'Agent'}</span>
               <span className="text-xs text-sidebar-foreground/60 truncate">Support Agent</span>
