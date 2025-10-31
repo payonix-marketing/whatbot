@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { Message } from '@/lib/types';
 
+// --- DIAGNOSTIC CHECK ---
+// Check if the required environment variables are set. This will make debugging easier.
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("FATAL ERROR: Supabase environment variables (URL or Service Role Key) are not set in Vercel.");
+  console.error("Please check project settings in Vercel dashboard.");
+}
+// --- END DIAGNOSTIC CHECK ---
+
 // Create a new Supabase client with the service role key to bypass RLS
 // This is safe because this code only runs on the server
 const supabaseAdmin = createClient(
