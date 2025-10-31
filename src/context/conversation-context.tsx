@@ -5,6 +5,7 @@ import type { Conversation, Message, Customer, Agent, CannedResponse } from '@/l
 import { toast } from "sonner";
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './auth-context';
+import { useNotifications } from '@/hooks/use-notifications';
 
 interface ConversationContextType {
   conversations: Conversation[];
@@ -34,6 +35,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
+  const { requestPermission, showNotification, permission } = useNotifications();
+
+  useEffect(() => {
+    if (permission === 'default') {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -72,25 +80,39 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    const conversationChannel = supabase.channel('realtime-conversations').on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, payload => {
+    const handleNewMessage = (payload: any) => {
       const updatedConv = payload.new as Conversation;
-      if (payload.eventType === 'INSERT') {
-        setConversations(prev => [updatedConv, ...prev]);
-        toast.info(`New conversation received.`);
+      const oldConv = conversations.find(c => c.id === updatedConv.id);
+      setConversations(prev => prev.map(conv => (conv.id === updatedConv.id ? updatedConv : conv)));
+      
+      if (oldConv && updatedConv.messages.length > oldConv.messages.length) {
+          const lastMessage = updatedConv.messages[updatedConv.messages.length - 1];
+          if (lastMessage.sender === 'customer') {
+              const customer = customers.find(c => c.id === updatedConv.customer_id);
+              const notificationTitle = `New message from ${customer?.name || 'a customer'}`;
+              const notificationBody = lastMessage.text;
+              
+              toast.info(notificationBody, { description: notificationTitle });
+              showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+          }
       }
-      if (payload.eventType === 'UPDATE') {
-        const oldConv = conversations.find(c => c.id === updatedConv.id);
-        setConversations(prev => prev.map(conv => (conv.id === updatedConv.id ? updatedConv : conv)));
-        
-        if (oldConv && updatedConv.messages.length > oldConv.messages.length) {
-            const lastMessage = updatedConv.messages[updatedConv.messages.length - 1];
-            if (lastMessage.sender === 'customer') {
-                const customer = customers.find(c => c.id === updatedConv.customer_id);
-                toast.info(`New message from ${customer?.name || 'a customer'}`);
-            }
-        }
-      }
-    }).subscribe();
+    };
+
+    const handleNewConversation = (payload: any) => {
+      const newConv = payload.new as Conversation;
+      setConversations(prev => [newConv, ...prev]);
+      const customer = customers.find(c => c.id === newConv.customer_id);
+      const notificationTitle = `New conversation from ${customer?.name || 'a customer'}`;
+      const notificationBody = newConv.last_message_preview || "New message received.";
+
+      toast.info(notificationBody, { description: notificationTitle });
+      showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+    };
+
+    const conversationChannel = supabase.channel('realtime-conversations')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, handleNewMessage)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, handleNewConversation)
+      .subscribe();
 
     const customerChannel = supabase.channel('realtime-customers').on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, payload => {
       const updatedCustomer = payload.new as Customer;
@@ -116,7 +138,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       supabase.removeChannel(customerChannel);
       supabase.removeChannel(cannedResponseChannel);
     };
-  }, [conversations, customers]);
+  }, [conversations, customers, showNotification]);
 
   const selectedConversation = useMemo(() => {
     if (!selectedConversationId) return null;
