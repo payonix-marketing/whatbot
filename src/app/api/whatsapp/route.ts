@@ -99,12 +99,14 @@ export async function POST(req: NextRequest) {
       console.log(`Customer found with ID: ${customer.id}`);
     }
 
-    // 2. Find an active conversation or create a new one using the admin client
+    // 2. Find the most recent active conversation or create a new one
     let { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations')
       .select('*')
       .eq('customer_id', customer.id)
       .neq('status', 'resolved')
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (convError) {
