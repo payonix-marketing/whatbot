@@ -96,7 +96,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (customer && customer.is_blocked) {
-      console.log(`Webhook ignored: Message from blocked customer ${customer.phone}.`);
+      console.log(`Message from blocked customer ${customer.phone}. Sending auto-reply.`);
+      const blockedReplyText = "Sizin Payonix ilə Whatsapp üzərindən əlaqəniz məhdudlaşdırılmışdır. Müraciətinizə Qaynar xətt *2021 və ya Mobil tətbiq üzərindən Chat-a yazaraq davam edə bilərsiniz.";
+      try {
+        await sendMessage(customer.phone, { text: blockedReplyText });
+        console.log(`Auto-reply sent to ${customer.phone}.`);
+      } catch (error) {
+        console.error(`Failed to send blocked reply to ${customer.phone}:`, error);
+      }
       return new NextResponse('OK', { status: 200 });
     }
 
