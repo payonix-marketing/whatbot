@@ -110,9 +110,9 @@ export async function POST(req: NextRequest) {
         timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
       };
     } else if (messageType === 'interactive') {
-      const buttonReply = messagePayload.interactive.button_reply;
-      if (buttonReply) {
-        lastMessagePreview = buttonReply.title;
+      const interactivePayload = messagePayload.interactive;
+      if (interactivePayload && interactivePayload.type === 'button_reply' && interactivePayload.button_reply) {
+        lastMessagePreview = interactivePayload.button_reply.title;
         newMessage = {
           id: messagePayload.id,
           text: lastMessagePreview,
@@ -120,7 +120,8 @@ export async function POST(req: NextRequest) {
           timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
         };
       } else {
-        console.log("Webhook ignored: Interactive message without button_reply.");
+        const interactiveType = interactivePayload ? interactivePayload.type : 'unknown';
+        console.log(`Webhook ignored: Unsupported or malformed interactive message type "${interactiveType}".`);
         return new NextResponse('OK', { status: 200 });
       }
     } else if (['image', 'video', 'audio', 'sticker', 'document'].includes(messageType)) {
