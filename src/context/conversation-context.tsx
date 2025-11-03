@@ -26,6 +26,7 @@ interface ConversationContextType {
   createNewConversation: (phone: string, messageText: string) => Promise<void>;
   addCannedResponse: (shortcut: string, message: string) => Promise<void>;
   deleteCannedResponse: (id: string) => Promise<void>;
+  sendTemplateMessage: (conversationId: string, templateName: string) => Promise<void>;
 }
 
 const ConversationContext = createContext<ConversationContextType | undefined>(undefined);
@@ -337,8 +338,66 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }
   };
 
+  const sendTemplateMessage = async (conversationId: string, templateName: string) => {
+    const conversation = conversations.find(c => c.id === conversationId);
+    const customer = customers.find(c => c.id === conversation?.customer_id);
+
+    if (!customer || !conversation) {
+      toast.error("Could not find customer for this conversation.");
+      return;
+    }
+
+    const toastId = toast.loading(`Sending template "${templateName}"...`);
+
+    try {
+      const response = await fetch('/api/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          to: customer.phone, 
+          template: { name: templateName, language: { code: 'az' } } 
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send template');
+      }
+
+      const systemMessage: Message = {
+        id: crypto.randomUUID(),
+        text: `[Template "${templateName}" sent]`,
+        sender: 'agent',
+        agentId: 'system',
+        timestamp: new Date().toISOString(),
+      };
+
+      const updatedMessages = [...(conversation.messages || []), systemMessage];
+      const last_message_preview = `Template: ${templateName}`;
+      
+      setConversations(prev => prev.map(conv => 
+        conv.id === conversationId 
+          ? { ...conv, messages: updatedMessages, last_message_preview } 
+          : conv
+      ));
+
+      const { error: dbError } = await supabase
+        .from('conversations')
+        .update({ messages: updatedMessages, last_message_preview })
+        .eq('id', conversationId);
+
+      if (dbError) throw new Error(`Failed to log template message: ${dbError.message}`);
+
+      toast.success(`Template "${templateName}" sent successfully!`, { id: toastId });
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast.error(`Failed to send template: ${errorMessage}`, { id: toastId });
+    }
+  };
+
   return (
-    <ConversationContext.Provider value={{ conversations, customers, agents, cannedResponses, onlineAgentIds, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, sendAttachment, deleteMessage, updateCustomer, createNewConversation, addCannedResponse, deleteCannedResponse }}>
+    <ConversationContext.Provider value={{ conversations, customers, agents, cannedResponses, onlineAgentIds, loading, selectedConversationId, setSelectedConversationId, selectedConversation, updateConversation, addMessage, sendAttachment, deleteMessage, updateCustomer, createNewConversation, addCannedResponse, deleteCannedResponse, sendTemplateMessage }}>
       {children}
     </ConversationContext.Provider>
   );

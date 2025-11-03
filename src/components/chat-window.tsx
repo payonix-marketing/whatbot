@@ -4,8 +4,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { useConversations } from "../context/conversation-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, MoreVertical, Trash2, Paperclip, Smile, MessageSquare, Phone, ArrowLeft, User, File as FileIcon } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Send, MoreVertical, Trash2, Paperclip, Smile, MessageSquare, Phone, ArrowLeft, User, File as FileIcon, MessageSquarePlus } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials } from "@/lib/utils";
@@ -37,7 +37,7 @@ const DateSeparator = ({ date }: { date: string }) => {
 };
 
 export function ChatWindow() {
-  const { selectedConversation, addMessage, deleteMessage, sendAttachment, setSelectedConversationId, cannedResponses } = useConversations();
+  const { selectedConversation, addMessage, deleteMessage, sendAttachment, setSelectedConversationId, cannedResponses, sendTemplateMessage } = useConversations();
   const [message, setMessage] = useState("");
   const [showCannedResponses, setShowCannedResponses] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -221,7 +221,7 @@ export function ChatWindow() {
                     handleSend();
                   }
                 }}
-                className="pr-28 pl-10 h-10"
+                className="pr-28 pl-28 h-10"
               />
               <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center">
                 <Popover>
@@ -234,6 +234,21 @@ export function ChatWindow() {
                 </Popover>
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAttachmentClick}><Paperclip className="w-5 h-5 text-muted-foreground" /></Button>
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MessageSquarePlus className="w-5 h-5 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuLabel>Send Template</DropdownMenuLabel>
+                    <DropdownMenuItem 
+                      onSelect={() => sendTemplateMessage(selectedConversation.id, 'welcome_start')}
+                    >
+                      Welcome Message (welcome_start)
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               <Button onClick={handleSend} disabled={!message.trim()} className="absolute right-2 top-1/2 -translate-y-1/2">
                 <Send className="w-4 h-4 mr-2" /> Send
