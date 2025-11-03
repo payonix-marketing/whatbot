@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, MoreVertical, Trash2, Paperclip, Smile, MessageSquare, Phone, ArrowLeft, User, File as FileIcon, MessageSquarePlus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getInitials } from "@/lib/utils";
 import { format, isToday, isYesterday } from "date-fns";
@@ -19,6 +19,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { useTypingIndicator } from "@/hooks/use-typing-indicator";
 import EmojiPicker, { EmojiClickData, Theme } from "emoji-picker-react";
 import { useTheme } from "next-themes";
+import { useConversationPresence } from "@/hooks/use-conversation-presence";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const DateSeparator = ({ date }: { date: string }) => {
   let formattedDate;
@@ -44,6 +46,7 @@ export function ChatWindow() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
   const { typingUsers, startTyping } = useTypingIndicator(selectedConversation?.id || null);
+  const otherViewers = useConversationPresence(selectedConversation?.id || null);
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -82,7 +85,6 @@ export function ChatWindow() {
       sendAttachment(selectedConversation.id, file, message);
       setMessage("");
     }
-    // Reset file input
     if(e.target) e.target.value = "";
   };
 
@@ -111,23 +113,44 @@ export function ChatWindow() {
           <h2 className="text-lg font-semibold">{selectedConversation.customer?.name}</h2>
           <p className="text-sm text-muted-foreground">{selectedConversation.customer?.phone}</p>
         </div>
-        {isMobile ? (
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <User className="w-5 h-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent className="p-0 w-full max-w-sm">
-              <CustomerProfile isCollapsed={false} />
-            </SheetContent>
-          </Sheet>
-        ) : (
-          <>
-            <Button variant="ghost" size="icon"><Phone className="w-5 h-5" /></Button>
-            <Button variant="ghost" size="icon"><MoreVertical className="w-5 h-5" /></Button>
-          </>
-        )}
+        <div className="flex items-center gap-2">
+          {otherViewers.length > 0 && (
+            <div className="flex items-center -space-x-2 mr-2">
+              {otherViewers.map((viewer) => (
+                <TooltipProvider key={viewer.user_id}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Avatar className="h-7 w-7 border-2 border-background">
+                        <AvatarImage src={viewer.avatar_url || ''} alt={viewer.name} />
+                        <AvatarFallback className="text-xs">{getInitials(viewer.name)}</AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{viewer.name} is viewing</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ))}
+            </div>
+          )}
+          {isMobile ? (
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <User className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="p-0 w-full max-w-sm">
+                <CustomerProfile isCollapsed={false} />
+              </SheetContent>
+            </Sheet>
+          ) : (
+            <>
+              <Button variant="ghost" size="icon"><Phone className="w-5 h-5" /></Button>
+              <Button variant="ghost" size="icon"><MoreVertical className="w-5 h-5" /></Button>
+            </>
+          )}
+        </div>
       </header>
       
       <ScrollArea className="flex-1" ref={scrollAreaRef}>
