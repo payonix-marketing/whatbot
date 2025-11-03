@@ -102,7 +102,6 @@ export async function POST(req: NextRequest) {
 
     let newMessage: Message | null = null;
     let lastMessagePreview = "";
-
     const messageType = messagePayload.type;
 
     if (messageType === 'text') {
@@ -113,32 +112,67 @@ export async function POST(req: NextRequest) {
         sender: 'customer',
         timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
       };
-    } else if (messageType === 'audio') {
-      const mediaId = messagePayload.audio.id;
-      const { fileBuffer, mimeType } = await downloadWhatsappMedia(mediaId);
-      
-      const fileName = `${mediaId}.ogg`;
-      const filePath = `customer-uploads/${customer.id}/${fileName}`;
+    } else if (['image', 'video', 'audio', 'sticker', 'document'].includes(messageType)) {
+        let mediaId: string;
+        let fileName: string | undefined;
+        let previewText: string;
+        let caption: string | undefined;
 
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from('attachments')
-        .upload(filePath, fileBuffer, { contentType: mimeType, upsert: true });
-      if (uploadError) throw uploadError;
+        switch (messageType) {
+            case 'image':
+                mediaId = messagePayload.image.id;
+                previewText = '📷 Image';
+                caption = messagePayload.image.caption;
+                break;
+            case 'video':
+                mediaId = messagePayload.video.id;
+                previewText = '📹 Video';
+                caption = messagePayload.video.caption;
+                break;
+            case 'audio':
+                mediaId = messagePayload.audio.id;
+                previewText = '🎤 Voice Message';
+                break;
+            case 'sticker':
+                mediaId = messagePayload.sticker.id;
+                previewText = 'Sticker';
+                break;
+            case 'document':
+                mediaId = messagePayload.document.id;
+                fileName = messagePayload.document.filename;
+                previewText = `📄 ${fileName || 'Document'}`;
+                caption = messagePayload.document.caption;
+                break;
+            default:
+                console.log(`Webhook ignored: Unsupported media type "${messageType}".`);
+                return new NextResponse('OK', { status: 200 });
+        }
 
-      const { data: { publicUrl } } = supabaseAdmin.storage.from('attachments').getPublicUrl(filePath);
-      
-      lastMessagePreview = "Voice Message";
-      newMessage = {
-        id: messagePayload.id,
-        text: '', // Voice messages have no text body
-        sender: 'customer',
-        timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
-        attachment: {
-          url: publicUrl,
-          fileName: lastMessagePreview,
-          fileType: mimeType,
-        },
-      };
+        const { fileBuffer, mimeType } = await downloadWhatsappMedia(mediaId);
+        
+        const fileExt = mimeType.split('/')[1] || 'bin';
+        const finalFileName = fileName || `${mediaId}.${fileExt}`;
+        const filePath = `customer-uploads/${customer.id}/${finalFileName}`;
+
+        const { error: uploadError } = await supabaseAdmin.storage
+            .from('attachments')
+            .upload(filePath, fileBuffer, { contentType: mimeType, upsert: true });
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabaseAdmin.storage.from('attachments').getPublicUrl(filePath);
+        
+        lastMessagePreview = caption ? `${previewText}: ${caption}` : previewText;
+        newMessage = {
+            id: messagePayload.id,
+            text: caption || '',
+            sender: 'customer',
+            timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
+            attachment: {
+                url: publicUrl,
+                fileName: finalFileName,
+                fileType: mimeType,
+            },
+        };
     } else {
       console.log(`Webhook ignored: Unsupported message type "${messageType}".`);
       return new NextResponse('OK', { status: 200 });

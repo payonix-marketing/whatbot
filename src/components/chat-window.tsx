@@ -160,6 +160,8 @@ export function ChatWindow() {
                       <div className="p-1">
                         {attachment.fileType.startsWith('image/') ? (
                           <img src={attachment.url} alt={attachment.fileName} className="max-w-xs rounded-lg cursor-pointer" onClick={() => window.open(attachment.url, '_blank')} />
+                        ) : attachment.fileType.startsWith('video/') ? (
+                          <video src={attachment.url} controls className="max-w-xs rounded-lg" />
                         ) : attachment.fileType.startsWith('audio/') ? (
                           <audio controls src={attachment.url} className="w-64" />
                         ) : (
