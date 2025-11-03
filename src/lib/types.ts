@@ -51,3 +51,16 @@ export type CannedResponse = {
   message: string;
   created_at: string;
 };
+
+export type AppSettings = {
+  awayMessage: {
+    enabled: boolean;
+    text: string;
+  };
+  businessHours: {
+    start: string;
+    end: string;
+    timezone: string; // e.g., 'UTC', 'America/New_York'
+    days: number[]; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  };
+};

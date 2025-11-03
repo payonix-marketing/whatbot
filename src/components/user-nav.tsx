@@ -15,7 +15,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings, MessageSquareQuote, Sun, Moon, Monitor } from "lucide-react";
+import { LogOut, Settings, MessageSquareQuote, Sun, Moon, Monitor, SlidersHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getInitials } from "@/lib/utils";
 import { useState } from "react";
@@ -23,6 +23,7 @@ import { EditProfileDialog } from "./edit-profile-dialog";
 import { CannedResponsesDialog } from "./canned-responses-dialog";
 import { useTheme } from "next-themes";
 import { useConversations } from "@/context/conversation-context";
+import { SettingsDialog } from "./settings-dialog";
 
 export function UserNav() {
   const { user, profile } = useAuth();
@@ -30,6 +31,7 @@ export function UserNav() {
   const router = useRouter();
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [isCannedResponsesOpen, setIsCannedResponsesOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { setTheme } = useTheme();
 
   const isOnline = user ? onlineAgentIds.includes(user.id) : false;
@@ -69,11 +71,15 @@ export function UserNav() {
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setIsProfileDialogOpen(true)}>
             <Settings className="mr-2 h-4 w-4" />
-            <span>Profile Settings</span>
+            <span>My Profile</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setIsCannedResponsesOpen(true)}>
             <MessageSquareQuote className="mr-2 h-4 w-4" />
             <span>Canned Responses</span>
+          </DropdownMenuItem>
+           <DropdownMenuItem onSelect={() => setIsSettingsOpen(true)}>
+            <SlidersHorizontal className="mr-2 h-4 w-4" />
+            <span>Workspace Settings</span>
           </DropdownMenuItem>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
@@ -105,6 +111,7 @@ export function UserNav() {
       </DropdownMenu>
       <EditProfileDialog open={isProfileDialogOpen} onOpenChange={setIsProfileDialogOpen} />
       <CannedResponsesDialog open={isCannedResponsesOpen} onOpenChange={setIsCannedResponsesOpen} />
+      <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
     </>
   );
 }
