@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useConversations } from "../context/conversation-context";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,17 +19,27 @@ import type { Agent } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { getInitials } from "@/lib/utils";
-import { User, ShieldAlert } from "lucide-react";
+import { User, ShieldAlert, Pencil, Check, X } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 
 export function CustomerProfile() {
   const { selectedConversation, updateConversation, agents, updateCustomer, onlineAgentIds } = useConversations();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
 
   const handleBlockToggle = () => {
     if (!selectedConversation || !selectedConversation.customer) return;
     const isBlocked = selectedConversation.customer.is_blocked;
     updateCustomer(selectedConversation.customer.id, { is_blocked: !isBlocked });
     toast.success(`Customer has been ${!isBlocked ? 'blocked' : 'unblocked'}.`);
+  };
+
+  const handleSaveName = () => {
+    if (selectedConversation?.customer && editedName.trim() && editedName !== selectedConversation.customer.name) {
+      updateCustomer(selectedConversation.customer.id, { name: editedName.trim() });
+      toast.success("Customer name updated.");
+    }
+    setIsEditingName(false);
   };
 
   if (!selectedConversation) {
@@ -45,11 +57,40 @@ export function CustomerProfile() {
       <ScrollArea className="h-full">
         <div className="p-4 md:p-6 space-y-6">
           <Card>
-            <CardHeader className="flex flex-col items-center text-center p-6">
+            <CardHeader className="flex flex-col items-center text-center p-6 space-y-2">
               <Avatar className="w-20 h-20 mb-2">
                 <AvatarFallback className="text-2xl">{getInitials(selectedConversation.customer?.name)}</AvatarFallback>
               </Avatar>
-              <CardTitle>{selectedConversation.customer?.name}</CardTitle>
+              {isEditingName ? (
+                <div className="flex items-center gap-2 w-full max-w-xs">
+                  <Input
+                    value={editedName}
+                    onChange={(e) => setEditedName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName();
+                      if (e.key === 'Escape') setIsEditingName(false);
+                    }}
+                    autoFocus
+                  />
+                  <Button size="icon" variant="ghost" onClick={handleSaveName}><Check className="w-4 h-4" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => setIsEditingName(false)}><X className="w-4 h-4" /></Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 group">
+                  <CardTitle>{selectedConversation.customer?.name}</CardTitle>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="opacity-0 group-hover:opacity-100"
+                    onClick={() => {
+                      setIsEditingName(true);
+                      setEditedName(selectedConversation.customer?.name || "");
+                    }}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
               <CardDescription>{selectedConversation.customer?.phone}</CardDescription>
               {selectedConversation.customer?.is_blocked && <Badge variant="destructive" className="mt-2">Blocked</Badge>}
             </CardHeader>
