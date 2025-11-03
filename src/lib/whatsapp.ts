@@ -6,6 +6,10 @@ export async function sendMessage(to: string, message: {
   interactive?: {
     body: string;
     buttons: { id: string; title: string }[];
+  };
+  template?: {
+    name: string;
+    language: { code: string };
   }
 }) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
@@ -18,7 +22,19 @@ export async function sendMessage(to: string, message: {
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
   let payload: any;
 
-  if (message.interactive) {
+  if (message.template) {
+    payload = {
+      messaging_product: "whatsapp",
+      to: to,
+      type: "template",
+      template: {
+        name: message.template.name,
+        language: {
+          code: message.template.language.code,
+        },
+      },
+    };
+  } else if (message.interactive) {
     payload = {
       messaging_product: "whatsapp",
       to: to,
@@ -65,7 +81,7 @@ export async function sendMessage(to: string, message: {
       },
     };
   } else {
-    throw new Error("Message must have text, an attachment, or be interactive.");
+    throw new Error("Message must have text, an attachment, be interactive, or a template.");
   }
 
   try {

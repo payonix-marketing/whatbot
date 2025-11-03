@@ -190,29 +190,18 @@ export async function POST(req: NextRequest) {
 }
 
 async function maybeSendWelcomeMessage(customerPhone: string): Promise<boolean> {
-  const { data, error } = await supabaseAdmin.from('settings').select('content').eq('id', 'app_settings').single();
-  if (error || !data) {
-    console.error("Could not fetch app settings for welcome message.", error);
-    return false;
-  }
-
-  const settings = data.content as AppSettings;
-  if (!settings.welcomeMessage || !settings.welcomeMessage.enabled || settings.welcomeMessage.buttons.length === 0) {
-    return false;
-  }
-
   try {
-    console.log("Sending interactive welcome message.");
+    console.log("Sending welcome template message.");
     await sendMessage(customerPhone, {
-      interactive: {
-        body: settings.welcomeMessage.text,
-        buttons: settings.welcomeMessage.buttons,
-      }
+      template: {
+        name: "welcome_start",
+        language: { code: "az" },
+      },
     });
-    console.log("Welcome message sent successfully.");
+    console.log("Welcome template sent successfully.");
     return true;
   } catch (e) {
-    console.error("Failed to send welcome message:", e);
+    console.error("Failed to send welcome template:", e);
     return false;
   }
 }
