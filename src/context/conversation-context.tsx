@@ -171,7 +171,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     const customer = customers.find(c => c.id === conversation?.customer_id);
 
     if (!customer || !conversation) return toast.error("Could not find customer for this conversation.");
-    if (customer.is_blocked) return toast.error("Cannot send message to a blocked customer.");
 
     const newMessage: Message = {
       id: crypto.randomUUID(),
@@ -215,10 +214,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     const customer = customers.find(c => c.id === conversation?.customer_id);
     if (!customer || !conversation) {
       toast.error("Could not find customer for this conversation.");
-      return;
-    }
-    if (customer.is_blocked) {
-      toast.error("Cannot send message to a blocked customer.");
       return;
     }
 

@@ -95,6 +95,11 @@ export async function POST(req: NextRequest) {
       customer = newCustomer;
     }
 
+    if (customer && customer.is_blocked) {
+      console.log(`Webhook ignored: Message from blocked customer ${customer.phone}.`);
+      return new NextResponse('OK', { status: 200 });
+    }
+
     let newMessage: Message | null = null;
     let lastMessagePreview = "";
 

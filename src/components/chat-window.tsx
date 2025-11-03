@@ -219,7 +219,6 @@ export function ChatWindow() {
                     handleSend();
                   }
                 }}
-                disabled={selectedConversation.customer?.is_blocked}
                 className="pr-28 pl-10 h-10"
               />
               <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center">
@@ -234,7 +233,7 @@ export function ChatWindow() {
                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAttachmentClick}><Paperclip className="w-5 h-5 text-muted-foreground" /></Button>
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
               </div>
-              <Button onClick={handleSend} disabled={!message.trim() || selectedConversation.customer?.is_blocked} className="absolute right-2 top-1/2 -translate-y-1/2">
+              <Button onClick={handleSend} disabled={!message.trim()} className="absolute right-2 top-1/2 -translate-y-1/2">
                 <Send className="w-4 h-4 mr-2" /> Send
               </Button>
             </div>
@@ -266,7 +265,7 @@ export function ChatWindow() {
           </PopoverContent>
         </Popover>
         {selectedConversation.customer?.is_blocked && (
-          <p className="text-sm text-destructive text-center mt-2">This customer is blocked. You cannot send messages.</p>
+          <p className="text-sm text-destructive text-center mt-2">This customer is blocked. They cannot send you messages.</p>
         )}
       </footer>
     </div>
