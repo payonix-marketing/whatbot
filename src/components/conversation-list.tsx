@@ -14,8 +14,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConversationListSkeleton } from "./conversation-list-skeleton";
 import { Input } from "@/components/ui/input";
 import { MessageSquareText, Search } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
-export function ConversationList() {
+interface ConversationListProps {
+  isCollapsed: boolean;
+}
+
+export function ConversationList({ isCollapsed }: ConversationListProps) {
   const { conversations, customers, agents, selectedConversationId, setSelectedConversationId, loading, onlineAgentIds } = useConversations();
   const { user } = useAuth();
   const [filter, setFilter] = useState<Conversation['status'] | 'all'>('new');
@@ -69,13 +74,15 @@ export function ConversationList() {
         <div
           key={conv.id}
           className={cn(
-            "flex items-start gap-3 p-3 cursor-pointer transition-colors rounded-lg mx-2",
+            "flex items-start gap-3 p-3 cursor-pointer transition-colors rounded-lg mx-2 relative",
             isSelected ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/50"
           )}
           onClick={() => setSelectedConversationId(conv.id)}
         >
+          {isSelected && <div className="absolute left-0 top-2 bottom-2 w-1 bg-primary rounded-r-full" />}
           <Avatar className="h-10 w-10 border-2 border-sidebar-border">
             <AvatarFallback>{getInitials(customer?.name)}</AvatarFallback>
+
           </Avatar>
           <div className="flex-1 overflow-hidden">
             <div className="flex justify-between items-center">
@@ -109,6 +116,28 @@ export function ConversationList() {
     });
   };
 
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground border-r border-sidebar-border items-center py-4 gap-4">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="w-10 h-10 flex items-center justify-center">
+                <MessageSquareText className="w-6 h-6" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>WhatsApp Support</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <div className="mt-auto">
+          <UserNav />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground border-r border-sidebar-border">
       <div className="p-4 border-b border-sidebar-border flex items-center justify-between gap-2">
@@ -120,14 +149,14 @@ export function ConversationList() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-sidebar-foreground/60" />
           <Input
             placeholder="Search..."
-            className="pl-9 bg-sidebar-border/50 border-sidebar-border focus:bg-sidebar-border"
+            className="pl-9 bg-sidebar-accent/50 border-sidebar-border focus:bg-sidebar-accent"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
       </div>
       <Tabs value={filter} onValueChange={(value) => setFilter(value as any)} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-3 mx-auto mt-2 max-w-[calc(100%-1.5rem)] bg-sidebar-border/50">
+        <TabsList className="grid w-full grid-cols-3 mx-auto mt-2 max-w-[calc(100%-1.5rem)] bg-sidebar-accent/50">
           <TabsTrigger value="new" className="data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground">New</TabsTrigger>
           <TabsTrigger value="mine" className="data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground">Mine</TabsTrigger>
           <TabsTrigger value="resolved" className="data-[state=active]:bg-sidebar-accent data-[state=active]:text-sidebar-accent-foreground">Resolved</TabsTrigger>

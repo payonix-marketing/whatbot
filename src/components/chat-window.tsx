@@ -119,7 +119,7 @@ export function ChatWindow() {
               </Button>
             </SheetTrigger>
             <SheetContent className="p-0 w-full max-w-sm">
-              <CustomerProfile />
+              <CustomerProfile isCollapsed={false} />
             </SheetContent>
           </Sheet>
         ) : (
@@ -155,7 +155,7 @@ export function ChatWindow() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   )}
-                  <div className={`p-2 rounded-2xl max-w-md md:max-w-lg relative ${msg.sender === 'agent' ? 'bg-primary text-primary-foreground rounded-br-lg' : 'bg-muted rounded-bl-lg'}`}>
+                  <div className={`p-2 rounded-lg max-w-md md:max-w-lg relative ${msg.sender === 'agent' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                     {attachment ? (
                       <div className="p-1">
                         {attachment.fileType.startsWith('image/') ? (
@@ -197,7 +197,7 @@ export function ChatWindow() {
           })}
           {typingUsers.length > 0 && (
             <div className="flex items-end gap-2 justify-start">
-              <div className="p-3 rounded-2xl max-w-md md:max-w-lg bg-muted rounded-bl-lg animate-pulse">
+              <div className="p-3 rounded-lg max-w-md md:max-w-lg bg-muted animate-pulse">
                 <p className="text-sm text-muted-foreground italic">
                   {typingUsers.map(u => u.name).join(', ')} {typingUsers.length > 1 ? 'are' : 'is'} typing...
                 </p>

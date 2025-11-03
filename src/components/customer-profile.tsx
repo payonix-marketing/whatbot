@@ -21,8 +21,13 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { getInitials } from "@/lib/utils";
 import { User, ShieldAlert, Pencil, Check, X } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
-export function CustomerProfile() {
+interface CustomerProfileProps {
+  isCollapsed: boolean;
+}
+
+export function CustomerProfile({ isCollapsed }: CustomerProfileProps) {
   const { selectedConversation, updateConversation, agents, updateCustomer, onlineAgentIds } = useConversations();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
@@ -41,6 +46,25 @@ export function CustomerProfile() {
     }
     setIsEditingName(false);
   };
+
+  if (isCollapsed) {
+    return (
+      <div className="flex flex-col h-full border-l bg-muted/30 items-center py-4 gap-4">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="w-10 h-10 flex items-center justify-center">
+                <User className="w-6 h-6" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p>Customer Profile</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    );
+  }
 
   if (!selectedConversation) {
     return (
