@@ -52,6 +52,11 @@ export type CannedResponse = {
   created_at: string;
 };
 
+export type InteractiveButton = {
+  id: string;
+  title: string;
+};
+
 export type AppSettings = {
   awayMessage: {
     enabled: boolean;
@@ -62,5 +67,10 @@ export type AppSettings = {
     end: string;
     timezone: string; // e.g., 'UTC', 'America/New_York'
     days: number[]; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  };
+  welcomeMessage: {
+    enabled: boolean;
+    text: string;
+    buttons: InteractiveButton[];
   };
 };

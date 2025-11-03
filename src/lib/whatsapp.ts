@@ -1,4 +1,13 @@
-export async function sendMessage(to: string, message: { text?: string; attachmentUrl?: string; mimeType?: string; fileName?: string }) {
+export async function sendMessage(to: string, message: { 
+  text?: string; 
+  attachmentUrl?: string; 
+  mimeType?: string; 
+  fileName?: string;
+  interactive?: {
+    body: string;
+    buttons: { id: string; title: string }[];
+  }
+}) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
 
@@ -9,10 +18,30 @@ export async function sendMessage(to: string, message: { text?: string; attachme
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
   let payload: any;
 
-  if (message.attachmentUrl && message.mimeType) {
+  if (message.interactive) {
+    payload = {
+      messaging_product: "whatsapp",
+      to: to,
+      type: "interactive",
+      interactive: {
+        type: "button",
+        body: {
+          text: message.interactive.body,
+        },
+        action: {
+          buttons: message.interactive.buttons.map(btn => ({
+            type: "reply",
+            reply: {
+              id: btn.id,
+              title: btn.title,
+            },
+          })),
+        },
+      },
+    };
+  } else if (message.attachmentUrl && message.mimeType) {
     const type = message.mimeType.split('/')[0]; // 'image', 'video', 'audio', 'document'
     
-    // WhatsApp supports these types directly via URL
     const supportedTypes = ['image', 'video', 'audio', 'document'];
     const messageType = supportedTypes.includes(type) ? type : 'document';
 
@@ -36,7 +65,7 @@ export async function sendMessage(to: string, message: { text?: string; attachme
       },
     };
   } else {
-    throw new Error("Message must have either text or an attachment.");
+    throw new Error("Message must have text, an attachment, or be interactive.");
   }
 
   try {

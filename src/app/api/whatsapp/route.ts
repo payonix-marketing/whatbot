@@ -19,30 +19,20 @@ async function downloadWhatsappMedia(mediaId: string): Promise<{ fileBuffer: Buf
   const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
   if (!accessToken) throw new Error("WHATSAPP_ACCESS_TOKEN is not set.");
 
-  // 1. Get media URL from media ID
   const urlResponse = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!urlResponse.ok) {
-    const errorData = await urlResponse.json();
-    console.error("Failed to get media URL from WhatsApp:", errorData);
-    throw new Error('Failed to get media URL from WhatsApp');
-  }
+  if (!urlResponse.ok) throw new Error('Failed to get media URL from WhatsApp');
   const urlData = await urlResponse.json();
   const mediaUrl = urlData.url;
   const mimeType = urlData.mime_type;
 
   if (!mediaUrl) throw new Error("Media URL not found in WhatsApp response.");
 
-  // 2. Download the actual media file from the URL
   const mediaResponse = await fetch(mediaUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!mediaResponse.ok) {
-    const errorData = await mediaResponse.text();
-    console.error("Failed to download media file from WhatsApp:", errorData);
-    throw new Error('Failed to download media file from WhatsApp');
-  }
+  if (!mediaResponse.ok) throw new Error('Failed to download media file from WhatsApp');
   
   const fileBuffer = Buffer.from(await mediaResponse.arrayBuffer());
 
@@ -97,7 +87,7 @@ export async function POST(req: NextRequest) {
 
     if (customer && customer.is_blocked) {
       console.log(`Message from blocked customer ${customer.phone}. Sending auto-reply.`);
-      const blockedReplyText = "Sizin Payonix ilə Whatsapp üzərindən əlaqəniz məhdudlaşdırılmışdır. Müraciətinizə Qaynar xətt *2021 və ya Mobil tətbiq üzərindən Chat-a yazaraq davam edə bilərsiniz.";
+      const blockedReplyText = "Sizin Payonix ilə Whatsapp üzərərindən əlaqəniz məhdudlaşdırılmışdır. Müraciətinizə Qaynar xətt *2021 və ya Mobil tətbiq üzərindən Chat-a yazaraq davam edə bilərsiniz.";
       try {
         await sendMessage(customer.phone, { text: blockedReplyText });
         console.log(`Auto-reply sent to ${customer.phone}.`);
@@ -119,66 +109,45 @@ export async function POST(req: NextRequest) {
         sender: 'customer',
         timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
       };
+    } else if (messageType === 'interactive') {
+      const buttonReply = messagePayload.interactive.button_reply;
+      if (buttonReply) {
+        lastMessagePreview = buttonReply.title;
+        newMessage = {
+          id: messagePayload.id,
+          text: lastMessagePreview,
+          sender: 'customer',
+          timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
+        };
+      } else {
+        console.log("Webhook ignored: Interactive message without button_reply.");
+        return new NextResponse('OK', { status: 200 });
+      }
     } else if (['image', 'video', 'audio', 'sticker', 'document'].includes(messageType)) {
-        let mediaId: string;
-        let fileName: string | undefined;
-        let previewText: string;
-        let caption: string | undefined;
-
+        let mediaId: string, fileName: string | undefined, previewText: string, caption: string | undefined;
         switch (messageType) {
-            case 'image':
-                mediaId = messagePayload.image.id;
-                previewText = '📷 Image';
-                caption = messagePayload.image.caption;
-                break;
-            case 'video':
-                mediaId = messagePayload.video.id;
-                previewText = '📹 Video';
-                caption = messagePayload.video.caption;
-                break;
-            case 'audio':
-                mediaId = messagePayload.audio.id;
-                previewText = '🎤 Voice Message';
-                break;
-            case 'sticker':
-                mediaId = messagePayload.sticker.id;
-                previewText = 'Sticker';
-                break;
-            case 'document':
-                mediaId = messagePayload.document.id;
-                fileName = messagePayload.document.filename;
-                previewText = `📄 ${fileName || 'Document'}`;
-                caption = messagePayload.document.caption;
-                break;
-            default:
-                console.log(`Webhook ignored: Unsupported media type "${messageType}".`);
-                return new NextResponse('OK', { status: 200 });
+            case 'image': mediaId = messagePayload.image.id; previewText = '📷 Image'; caption = messagePayload.image.caption; break;
+            case 'video': mediaId = messagePayload.video.id; previewText = '📹 Video'; caption = messagePayload.video.caption; break;
+            case 'audio': mediaId = messagePayload.audio.id; previewText = '🎤 Voice Message'; break;
+            case 'sticker': mediaId = messagePayload.sticker.id; previewText = 'Sticker'; break;
+            case 'document': mediaId = messagePayload.document.id; fileName = messagePayload.document.filename; previewText = `📄 ${fileName || 'Document'}`; caption = messagePayload.document.caption; break;
+            default: return new NextResponse('OK', { status: 200 });
         }
 
         const { fileBuffer, mimeType } = await downloadWhatsappMedia(mediaId);
-        
         const fileExt = mimeType.split('/')[1] || 'bin';
         const finalFileName = fileName || `${mediaId}.${fileExt}`;
         const filePath = `customer-uploads/${customer.id}/${finalFileName}`;
 
-        const { error: uploadError } = await supabaseAdmin.storage
-            .from('attachments')
-            .upload(filePath, fileBuffer, { contentType: mimeType, upsert: true });
+        const { error: uploadError } = await supabaseAdmin.storage.from('attachments').upload(filePath, fileBuffer, { contentType: mimeType, upsert: true });
         if (uploadError) throw uploadError;
 
         const { data: { publicUrl } } = supabaseAdmin.storage.from('attachments').getPublicUrl(filePath);
         
         lastMessagePreview = caption ? `${previewText}: ${caption}` : previewText;
         newMessage = {
-            id: messagePayload.id,
-            text: caption || '',
-            sender: 'customer',
-            timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
-            attachment: {
-                url: publicUrl,
-                fileName: finalFileName,
-                fileType: mimeType,
-            },
+            id: messagePayload.id, text: caption || '', sender: 'customer', timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
+            attachment: { url: publicUrl, fileName: finalFileName, fileType: mimeType },
         };
     } else {
       console.log(`Webhook ignored: Unsupported message type "${messageType}".`);
@@ -186,39 +155,30 @@ export async function POST(req: NextRequest) {
     }
 
     let { data: conversation, error: convError } = await supabaseAdmin
-      .from('conversations').select('*').eq('customer_id', customer.id)
-      .neq('status', 'resolved').order('updated_at', { ascending: false }).limit(1).maybeSingle();
+      .from('conversations').select('*').eq('customer_id', customer.id).neq('status', 'resolved').order('updated_at', { ascending: false }).limit(1).maybeSingle();
 
     if (convError) throw convError;
 
     if (conversation) {
       console.log(`Existing conversation found (ID: ${conversation.id}). Appending message.`);
       const updatedMessages = [...conversation.messages, newMessage];
-      const { error: updateError } = await supabaseAdmin
-        .from('conversations')
-        .update({
-          messages: updatedMessages,
-          last_message_preview: lastMessagePreview,
-          unread_count: (conversation.unread_count || 0) + 1,
-          status: 'new',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', conversation.id);
+      const { error: updateError } = await supabaseAdmin.from('conversations').update({
+          messages: updatedMessages, last_message_preview: lastMessagePreview, unread_count: (conversation.unread_count || 0) + 1,
+          status: 'new', updated_at: new Date().toISOString(),
+        }).eq('id', conversation.id);
       if (updateError) throw updateError;
     } else {
       console.log("No active conversation found. Creating new one.");
-      const { data: newConversation, error: insertError } = await supabaseAdmin
-        .from('conversations')
-        .insert({
-          customer_id: customer.id,
-          messages: [newMessage],
-          last_message_preview: lastMessagePreview,
-          unread_count: 1,
-          status: 'new',
+      const { data: newConversation, error: insertError } = await supabaseAdmin.from('conversations').insert({
+          customer_id: customer.id, messages: [newMessage], last_message_preview: lastMessagePreview,
+          unread_count: 1, status: 'new',
         }).select().single();
       if (insertError) throw insertError;
       
-      await maybeSendAwayMessage(newConversation.id, customer.phone);
+      const welcomeMessageSent = await maybeSendWelcomeMessage(customer.phone);
+      if (!welcomeMessageSent) {
+        await maybeSendAwayMessage(newConversation.id, customer.phone);
+      }
     }
 
     return new NextResponse('OK', { status: 200 });
@@ -229,10 +189,36 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function maybeSendAwayMessage(conversationId: string, customerPhone: string) {
-  const { data, error } = await supabaseAdmin
-    .from('settings').select('content').eq('id', 'app_settings').single();
+async function maybeSendWelcomeMessage(customerPhone: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.from('settings').select('content').eq('id', 'app_settings').single();
+  if (error || !data) {
+    console.error("Could not fetch app settings for welcome message.", error);
+    return false;
+  }
 
+  const settings = data.content as AppSettings;
+  if (!settings.welcomeMessage || !settings.welcomeMessage.enabled || settings.welcomeMessage.buttons.length === 0) {
+    return false;
+  }
+
+  try {
+    console.log("Sending interactive welcome message.");
+    await sendMessage(customerPhone, {
+      interactive: {
+        body: settings.welcomeMessage.text,
+        buttons: settings.welcomeMessage.buttons,
+      }
+    });
+    console.log("Welcome message sent successfully.");
+    return true;
+  } catch (e) {
+    console.error("Failed to send welcome message:", e);
+    return false;
+  }
+}
+
+async function maybeSendAwayMessage(conversationId: string, customerPhone: string) {
+  const { data, error } = await supabaseAdmin.from('settings').select('content').eq('id', 'app_settings').single();
   if (error || !data) {
     console.error("Could not fetch app settings for away message.", error);
     return;
@@ -243,7 +229,7 @@ async function maybeSendAwayMessage(conversationId: string, customerPhone: strin
 
   const now = new Date();
   const utcHour = now.getUTCHours();
-  const utcDay = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+  const utcDay = now.getUTCDay();
 
   const { start, end, days } = settings.businessHours;
   const startHour = parseInt(start.split(':')[0]);
@@ -258,16 +244,11 @@ async function maybeSendAwayMessage(conversationId: string, customerPhone: strin
       await sendMessage(customerPhone, { text: settings.awayMessage.text });
       
       const awayMessage: Message = {
-        id: crypto.randomUUID(),
-        text: settings.awayMessage.text,
-        sender: 'agent',
-        agentId: 'system', // Indicates an automated message
-        timestamp: new Date().toISOString(),
+        id: crypto.randomUUID(), text: settings.awayMessage.text, sender: 'agent',
+        agentId: 'system', timestamp: new Date().toISOString(),
       };
 
-      const { data: convData, error: convError } = await supabaseAdmin
-        .from('conversations').select('messages').eq('id', conversationId).single();
-      
+      const { data: convData, error: convError } = await supabaseAdmin.from('conversations').select('messages').eq('id', conversationId).single();
       if (convError) throw convError;
 
       const updatedMessages = [...convData.messages, awayMessage];
