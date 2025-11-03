@@ -15,6 +15,40 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+async function downloadWhatsappMedia(mediaId: string): Promise<{ fileBuffer: Buffer, mimeType: string }> {
+  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+  if (!accessToken) throw new Error("WHATSAPP_ACCESS_TOKEN is not set.");
+
+  // 1. Get media URL from media ID
+  const urlResponse = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!urlResponse.ok) {
+    const errorData = await urlResponse.json();
+    console.error("Failed to get media URL from WhatsApp:", errorData);
+    throw new Error('Failed to get media URL from WhatsApp');
+  }
+  const urlData = await urlResponse.json();
+  const mediaUrl = urlData.url;
+  const mimeType = urlData.mime_type;
+
+  if (!mediaUrl) throw new Error("Media URL not found in WhatsApp response.");
+
+  // 2. Download the actual media file from the URL
+  const mediaResponse = await fetch(mediaUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!mediaResponse.ok) {
+    const errorData = await mediaResponse.text();
+    console.error("Failed to download media file from WhatsApp:", errorData);
+    throw new Error('Failed to download media file from WhatsApp');
+  }
+  
+  const fileBuffer = Buffer.from(await mediaResponse.arrayBuffer());
+
+  return { fileBuffer, mimeType };
+}
+
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const mode = searchParams.get('hub.mode');
@@ -37,16 +71,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const messagePayload = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (!messagePayload || messagePayload.type !== 'text') {
-      console.log("Webhook ignored: Not a text message payload.");
+    if (!messagePayload) {
+      console.log("Webhook ignored: Not a message payload.");
       return new NextResponse('OK', { status: 200 });
     }
 
     const contactPayload = body.entry?.[0]?.changes?.[0]?.value?.contacts?.[0];
     const customerPhone = messagePayload.from;
     const customerName = contactPayload?.profile?.name || `Customer ${customerPhone.slice(-4)}`;
-    const messageText = messagePayload.text.body;
-    const messageId = messagePayload.id;
     
     console.log(`Processing message from ${customerName} (${customerPhone})`);
 
@@ -63,18 +95,55 @@ export async function POST(req: NextRequest) {
       customer = newCustomer;
     }
 
+    let newMessage: Message | null = null;
+    let lastMessagePreview = "";
+
+    const messageType = messagePayload.type;
+
+    if (messageType === 'text') {
+      lastMessagePreview = messagePayload.text.body;
+      newMessage = {
+        id: messagePayload.id,
+        text: lastMessagePreview,
+        sender: 'customer',
+        timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
+      };
+    } else if (messageType === 'audio') {
+      const mediaId = messagePayload.audio.id;
+      const { fileBuffer, mimeType } = await downloadWhatsappMedia(mediaId);
+      
+      const fileName = `${mediaId}.ogg`;
+      const filePath = `customer-uploads/${customer.id}/${fileName}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('attachments')
+        .upload(filePath, fileBuffer, { contentType: mimeType, upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabaseAdmin.storage.from('attachments').getPublicUrl(filePath);
+      
+      lastMessagePreview = "Voice Message";
+      newMessage = {
+        id: messagePayload.id,
+        text: '', // Voice messages have no text body
+        sender: 'customer',
+        timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
+        attachment: {
+          url: publicUrl,
+          fileName: lastMessagePreview,
+          fileType: mimeType,
+        },
+      };
+    } else {
+      console.log(`Webhook ignored: Unsupported message type "${messageType}".`);
+      return new NextResponse('OK', { status: 200 });
+    }
+
     let { data: conversation, error: convError } = await supabaseAdmin
       .from('conversations').select('*').eq('customer_id', customer.id)
       .neq('status', 'resolved').order('updated_at', { ascending: false }).limit(1).maybeSingle();
 
     if (convError) throw convError;
-
-    const newMessage: Message = {
-      id: messageId,
-      text: messageText,
-      sender: 'customer',
-      timestamp: new Date(parseInt(messagePayload.timestamp) * 1000).toISOString(),
-    };
 
     if (conversation) {
       console.log(`Existing conversation found (ID: ${conversation.id}). Appending message.`);
@@ -83,7 +152,7 @@ export async function POST(req: NextRequest) {
         .from('conversations')
         .update({
           messages: updatedMessages,
-          last_message_preview: messageText,
+          last_message_preview: lastMessagePreview,
           unread_count: (conversation.unread_count || 0) + 1,
           status: 'new',
           updated_at: new Date().toISOString(),
@@ -97,13 +166,12 @@ export async function POST(req: NextRequest) {
         .insert({
           customer_id: customer.id,
           messages: [newMessage],
-          last_message_preview: messageText,
+          last_message_preview: lastMessagePreview,
           unread_count: 1,
           status: 'new',
         }).select().single();
       if (insertError) throw insertError;
       
-      // Check if an away message should be sent for this new conversation
       await maybeSendAwayMessage(newConversation.id, customer.phone);
     }
 
