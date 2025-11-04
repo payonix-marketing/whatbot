@@ -19,9 +19,9 @@ interface ConversationContextType {
   setSelectedConversationId: (id: string | null) => void;
   selectedConversation: (Conversation & { customer: Customer | undefined }) | null;
   updateConversation: (id: string, updates: Partial<Conversation>) => void;
-  addMessage: (conversationId: string, messageText: string) => void;
+  addMessage: (conversationId: string, messageText: string) => Promise<void>;
   sendAttachment: (conversationId: string, file: File, caption: string) => Promise<void>;
-  deleteMessage: (conversationId: string, messageId: string) => void;
+  deleteMessage: (conversationId: string, messageId: string) => Promise<void>;
   updateCustomer: (id: string, updates: Partial<Customer>) => void;
   createNewConversation: (phone: string, messageText: string) => Promise<void>;
   addCannedResponse: (shortcut: string, message: string) => Promise<void>;
@@ -85,26 +85,26 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     fetchData();
   }, []);
 
-  // Real-time subscriptions setup
+  // --- CORE REAL-TIME FIX ---
+  // This useEffect runs ONLY ONCE and sets up all subscriptions.
+  // It uses functional state updates (e.g., `setConversations(prev => ...)`)
+  // to avoid stale closures and ensure the UI always reflects the latest data.
   useEffect(() => {
-    const handleConversationUpdate = (payload: any) => {
+    const handleConversationChange = (payload: any) => {
       const updatedRecord = payload.new as Conversation;
-
       setConversations(currentConversations => {
         const recordIndex = currentConversations.findIndex(c => c.id === updatedRecord.id);
         
         let newConversationList;
-        if (recordIndex !== -1) {
-          // This is an UPDATE
+        if (recordIndex !== -1) { // UPDATE event
           newConversationList = currentConversations.map(conv => 
             conv.id === updatedRecord.id ? updatedRecord : conv
           );
-        } else {
-          // This is an INSERT
+        } else { // INSERT event
           newConversationList = [updatedRecord, ...currentConversations];
         }
 
-        // Always re-sort the list by the latest update timestamp
+        // CRITICAL: Always re-sort the list by the latest update timestamp
         newConversationList.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
         // Notification logic
@@ -114,6 +114,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         if (hasNewMessage) {
           const lastMessage = updatedRecord.messages[updatedRecord.messages.length - 1];
           if (lastMessage && lastMessage.sender === 'customer') {
+            // We fetch the customer name here to ensure notifications are accurate
             supabase.from('customers').select('name').eq('id', updatedRecord.customer_id).single().then(({ data: customer }) => {
               const notificationTitle = payload.eventType === 'INSERT' 
                 ? `New conversation from ${customer?.name || 'a customer'}`
@@ -125,46 +126,38 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
             });
           }
         }
-
         return newConversationList;
       });
     };
 
     const conversationChannel = supabase.channel('realtime-conversations')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, handleConversationUpdate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, handleConversationChange)
       .subscribe();
 
     const customerChannel = supabase.channel('realtime-customers').on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, payload => {
       const updatedCustomer = payload.new as Customer;
       setCustomers(prevCustomers => {
-        if (payload.eventType === 'INSERT') {
-          return [updatedCustomer, ...prevCustomers];
-        }
-        if (payload.eventType === 'UPDATE') {
-          return prevCustomers.map(cust => (cust.id === updatedCustomer.id ? updatedCustomer : cust));
-        }
+        if (payload.eventType === 'INSERT') return [updatedCustomer, ...prevCustomers];
+        if (payload.eventType === 'UPDATE') return prevCustomers.map(cust => (cust.id === updatedCustomer.id ? updatedCustomer : cust));
         return prevCustomers;
       });
     }).subscribe();
 
     const cannedResponseChannel = supabase.channel('realtime-canned-responses').on('postgres_changes', { event: '*', schema: 'public', table: 'canned_responses' }, payload => {
       setCannedResponses(prevResponses => {
-        if (payload.eventType === 'INSERT') {
-          return [...prevResponses, payload.new as CannedResponse].sort((a, b) => a.shortcut.localeCompare(b.shortcut));
-        }
-        if (payload.eventType === 'DELETE') {
-          return prevResponses.filter(cr => cr.id !== (payload.old as CannedResponse).id);
-        }
+        if (payload.eventType === 'INSERT') return [...prevResponses, payload.new as CannedResponse].sort((a, b) => a.shortcut.localeCompare(b.shortcut));
+        if (payload.eventType === 'DELETE') return prevResponses.filter(cr => cr.id !== (payload.old as CannedResponse).id);
         return prevResponses;
       });
     }).subscribe();
 
+    // Cleanup function to remove channels on component unmount
     return () => {
       supabase.removeChannel(conversationChannel);
       supabase.removeChannel(customerChannel);
       supabase.removeChannel(cannedResponseChannel);
     };
-  }, [showNotification]); // Dependency is stable and safe
+  }, []); // Empty dependency array ensures this runs only once.
 
   const selectedConversation = useMemo(() => {
     if (!selectedConversationId) return null;
@@ -184,13 +177,18 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     if (error) toast.error(`Failed to update customer: ${error.message}`);
   };
 
+  // --- REWRITTEN SEND MESSAGE LOGIC ---
+  // This function now ONLY updates the database. The UI update is handled
+  // by the realtime subscription, ensuring a single source of truth.
   const addMessage = async (conversationId: string, text: string) => {
     if (!text.trim() || !user) return;
 
     const conversation = conversations.find(c => c.id === conversationId);
     const customer = customers.find(c => c.id === conversation?.customer_id);
-
-    if (!customer || !conversation) return toast.error("Could not find customer for this conversation.");
+    if (!customer || !conversation) {
+      toast.error("Could not find customer for this conversation.");
+      return;
+    }
 
     const newMessage: Message = {
       id: crypto.randomUUID(),
@@ -202,14 +200,19 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
     const updatedMessages = [...(conversation.messages || []), newMessage];
     
-    // Optimistic UI update is handled by the realtime subscription, but we trigger the DB update
-    const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: text, updated_at: new Date().toISOString() }).eq('id', conversationId);
+    // 1. Update the database. This is the trigger for the realtime event.
+    const { error: dbError } = await supabase.from('conversations').update({ 
+      messages: updatedMessages, 
+      last_message_preview: text, 
+      updated_at: new Date().toISOString() // This is crucial for sorting
+    }).eq('id', conversationId);
 
     if (dbError) {
       toast.error(`Failed to save message: ${dbError.message}`);
       return;
     }
 
+    // 2. Send the message via the API.
     try {
       const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: customer.phone, text }) });
       if (!response.ok) {
@@ -258,7 +261,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       const updatedMessages = [...(conversation.messages || []), newMessage];
       const last_message_preview = caption || file.name;
 
-      const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview, updated_at: new Date().toISOString() }).eq('id', conversationId);
+      const { error: dbError } = await supabase.from('conversations').update({ 
+        messages: updatedMessages, 
+        last_message_preview, 
+        updated_at: new Date().toISOString() 
+      }).eq('id', conversationId);
       if (dbError) throw new Error(`Failed to save message: ${dbError.message}`);
 
       toast.loading("Sending message...", { id: toastId });
