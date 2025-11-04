@@ -48,6 +48,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     }
   }, [permission, requestPermission]);
 
+  // Initial data fetch
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -84,6 +85,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     fetchData();
   }, []);
 
+  // Real-time subscriptions setup
   useEffect(() => {
     const handleConversationUpdate = (payload: any) => {
       const updatedRecord = payload.new as Conversation;
@@ -93,14 +95,19 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         
         let newConversationList;
         if (recordIndex !== -1) {
-          newConversationList = [...currentConversations];
-          newConversationList[recordIndex] = updatedRecord;
+          // This is an UPDATE
+          newConversationList = currentConversations.map(conv => 
+            conv.id === updatedRecord.id ? updatedRecord : conv
+          );
         } else {
+          // This is an INSERT
           newConversationList = [updatedRecord, ...currentConversations];
         }
 
+        // Always re-sort the list by the latest update timestamp
         newConversationList.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
+        // Notification logic
         const oldRecord = recordIndex !== -1 ? currentConversations[recordIndex] : null;
         const hasNewMessage = !oldRecord || updatedRecord.messages.length > oldRecord.messages.length;
         
@@ -129,21 +136,27 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
     const customerChannel = supabase.channel('realtime-customers').on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, payload => {
       const updatedCustomer = payload.new as Customer;
-      if (payload.eventType === 'INSERT') {
-        setCustomers(prev => [updatedCustomer, ...prev]);
-      }
-      if (payload.eventType === 'UPDATE') {
-        setCustomers(prev => prev.map(cust => (cust.id === updatedCustomer.id ? updatedCustomer : cust)));
-      }
+      setCustomers(prevCustomers => {
+        if (payload.eventType === 'INSERT') {
+          return [updatedCustomer, ...prevCustomers];
+        }
+        if (payload.eventType === 'UPDATE') {
+          return prevCustomers.map(cust => (cust.id === updatedCustomer.id ? updatedCustomer : cust));
+        }
+        return prevCustomers;
+      });
     }).subscribe();
 
     const cannedResponseChannel = supabase.channel('realtime-canned-responses').on('postgres_changes', { event: '*', schema: 'public', table: 'canned_responses' }, payload => {
-      if (payload.eventType === 'INSERT') {
-        setCannedResponses(prev => [...prev, payload.new as CannedResponse].sort((a, b) => a.shortcut.localeCompare(b.shortcut)));
-      }
-      if (payload.eventType === 'DELETE') {
-        setCannedResponses(prev => prev.filter(cr => cr.id !== (payload.old as CannedResponse).id));
-      }
+      setCannedResponses(prevResponses => {
+        if (payload.eventType === 'INSERT') {
+          return [...prevResponses, payload.new as CannedResponse].sort((a, b) => a.shortcut.localeCompare(b.shortcut));
+        }
+        if (payload.eventType === 'DELETE') {
+          return prevResponses.filter(cr => cr.id !== (payload.old as CannedResponse).id);
+        }
+        return prevResponses;
+      });
     }).subscribe();
 
     return () => {
@@ -151,7 +164,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       supabase.removeChannel(customerChannel);
       supabase.removeChannel(cannedResponseChannel);
     };
-  }, [showNotification]);
+  }, [showNotification]); // Dependency is stable and safe
 
   const selectedConversation = useMemo(() => {
     if (!selectedConversationId) return null;
@@ -162,13 +175,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   }, [selectedConversationId, conversations, customers]);
 
   const updateConversation = async (id: string, updates: Partial<Conversation>) => {
-    setConversations(prev => prev.map(conv => (conv.id === id ? { ...conv, ...updates } : conv)));
     const { error } = await supabase.from('conversations').update(updates).eq('id', id);
     if (error) toast.error(`Failed to update conversation: ${error.message}`);
   };
 
   const updateCustomer = async (id: string, updates: Partial<Customer>) => {
-    setCustomers(prev => prev.map(cust => (cust.id === id ? { ...cust, ...updates } : cust)));
     const { error } = await supabase.from('customers').update(updates).eq('id', id);
     if (error) toast.error(`Failed to update customer: ${error.message}`);
   };
@@ -189,15 +200,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       timestamp: new Date().toISOString(),
     };
 
-    const originalConversation = { ...conversation };
     const updatedMessages = [...(conversation.messages || []), newMessage];
-    setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview: text } : conv));
-
+    
+    // Optimistic UI update is handled by the realtime subscription, but we trigger the DB update
     const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: text, updated_at: new Date().toISOString() }).eq('id', conversationId);
 
     if (dbError) {
       toast.error(`Failed to save message: ${dbError.message}`);
-      setConversations(prev => prev.map(conv => (conv.id === conversationId ? originalConversation : conv)));
       return;
     }
 
@@ -248,7 +257,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
       const updatedMessages = [...(conversation.messages || []), newMessage];
       const last_message_preview = caption || file.name;
-      setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview } : conv));
 
       const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview, updated_at: new Date().toISOString() }).eq('id', conversationId);
       if (dbError) throw new Error(`Failed to save message: ${dbError.message}`);
@@ -278,8 +286,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     if (!conversation) return;
 
     const updatedMessages = conversation.messages.filter(m => m.id !== messageId);
-    setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages } : conv));
-
+    
     const { error } = await supabase.from('conversations').update({ messages: updatedMessages }).eq('id', conversationId);
     if (error) toast.error(`Failed to delete message: ${error.message}`);
     else toast.success("Message deleted.");
@@ -383,12 +390,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       const updatedMessages = [...(conversation.messages || []), systemMessage];
       const last_message_preview = `Template: ${templateName}`;
       
-      setConversations(prev => prev.map(conv => 
-        conv.id === conversationId 
-          ? { ...conv, messages: updatedMessages, last_message_preview } 
-          : conv
-      ));
-
       const { error: dbError } = await supabase
         .from('conversations')
         .update({ messages: updatedMessages, last_message_preview, updated_at: new Date().toISOString() })
