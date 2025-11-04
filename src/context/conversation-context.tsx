@@ -85,45 +85,46 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    const handleNewMessage = (payload: any) => {
-      const updatedConv = payload.new as Conversation;
-      
-      setConversations(prevConvos => {
-        const oldConv = prevConvos.find(c => c.id === updatedConv.id);
-        const newConvos = prevConvos.map(conv => (conv.id === updatedConv.id ? updatedConv : conv));
+    const handleConversationUpdate = (payload: any) => {
+      const updatedRecord = payload.new as Conversation;
 
-        if (oldConv && updatedConv.messages.length > oldConv.messages.length) {
-          const lastMessage = updatedConv.messages[updatedConv.messages.length - 1];
-          if (lastMessage.sender === 'customer') {
-            supabase.from('customers').select('name').eq('id', updatedConv.customer_id).single().then(({ data: customer }) => {
-                const notificationTitle = `New message from ${customer?.name || 'a customer'}`;
-                const notificationBody = lastMessage.text;
-                
-                toast.info(notificationBody, { description: notificationTitle });
-                showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+      setConversations(currentConversations => {
+        const recordIndex = currentConversations.findIndex(c => c.id === updatedRecord.id);
+        
+        let newConversationList;
+        if (recordIndex !== -1) {
+          newConversationList = [...currentConversations];
+          newConversationList[recordIndex] = updatedRecord;
+        } else {
+          newConversationList = [updatedRecord, ...currentConversations];
+        }
+
+        newConversationList.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+        const oldRecord = recordIndex !== -1 ? currentConversations[recordIndex] : null;
+        const hasNewMessage = !oldRecord || updatedRecord.messages.length > oldRecord.messages.length;
+        
+        if (hasNewMessage) {
+          const lastMessage = updatedRecord.messages[updatedRecord.messages.length - 1];
+          if (lastMessage && lastMessage.sender === 'customer') {
+            supabase.from('customers').select('name').eq('id', updatedRecord.customer_id).single().then(({ data: customer }) => {
+              const notificationTitle = payload.eventType === 'INSERT' 
+                ? `New conversation from ${customer?.name || 'a customer'}`
+                : `New message from ${customer?.name || 'a customer'}`;
+              const notificationBody = updatedRecord.last_message_preview || "New message received.";
+              
+              toast.info(notificationBody, { description: notificationTitle });
+              showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
             });
           }
         }
-        return newConvos;
-      });
-    };
 
-    const handleNewConversation = (payload: any) => {
-      const newConv = payload.new as Conversation;
-      setConversations(prev => [newConv, ...prev].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
-      
-      supabase.from('customers').select('name').eq('id', newConv.customer_id).single().then(({ data: customer }) => {
-        const notificationTitle = `New conversation from ${customer?.name || 'a customer'}`;
-        const notificationBody = newConv.last_message_preview || "New message received.";
-
-        toast.info(notificationBody, { description: notificationTitle });
-        showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+        return newConversationList;
       });
     };
 
     const conversationChannel = supabase.channel('realtime-conversations')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'conversations' }, handleNewMessage)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversations' }, handleNewConversation)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, handleConversationUpdate)
       .subscribe();
 
     const customerChannel = supabase.channel('realtime-customers').on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, payload => {
@@ -192,7 +193,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     const updatedMessages = [...(conversation.messages || []), newMessage];
     setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview: text } : conv));
 
-    const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: text }).eq('id', conversationId);
+    const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: text, updated_at: new Date().toISOString() }).eq('id', conversationId);
 
     if (dbError) {
       toast.error(`Failed to save message: ${dbError.message}`);
@@ -249,7 +250,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       const last_message_preview = caption || file.name;
       setConversations(prev => prev.map(conv => conv.id === conversationId ? { ...conv, messages: updatedMessages, last_message_preview } : conv));
 
-      const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview }).eq('id', conversationId);
+      const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview, updated_at: new Date().toISOString() }).eq('id', conversationId);
       if (dbError) throw new Error(`Failed to save message: ${dbError.message}`);
 
       toast.loading("Sending message...", { id: toastId });
@@ -390,7 +391,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
       const { error: dbError } = await supabase
         .from('conversations')
-        .update({ messages: updatedMessages, last_message_preview })
+        .update({ messages: updatedMessages, last_message_preview, updated_at: new Date().toISOString() })
         .eq('id', conversationId);
 
       if (dbError) throw new Error(`Failed to log template message: ${dbError.message}`);
