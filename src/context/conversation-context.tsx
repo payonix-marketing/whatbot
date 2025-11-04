@@ -87,31 +87,38 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     const handleNewMessage = (payload: any) => {
       const updatedConv = payload.new as Conversation;
-      const oldConv = conversations.find(c => c.id === updatedConv.id);
-      setConversations(prev => prev.map(conv => (conv.id === updatedConv.id ? updatedConv : conv)));
       
-      if (oldConv && updatedConv.messages.length > oldConv.messages.length) {
+      setConversations(prevConvos => {
+        const oldConv = prevConvos.find(c => c.id === updatedConv.id);
+        const newConvos = prevConvos.map(conv => (conv.id === updatedConv.id ? updatedConv : conv));
+
+        if (oldConv && updatedConv.messages.length > oldConv.messages.length) {
           const lastMessage = updatedConv.messages[updatedConv.messages.length - 1];
           if (lastMessage.sender === 'customer') {
-              const customer = customers.find(c => c.id === updatedConv.customer_id);
-              const notificationTitle = `New message from ${customer?.name || 'a customer'}`;
-              const notificationBody = lastMessage.text;
-              
-              toast.info(notificationBody, { description: notificationTitle });
-              showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+            supabase.from('customers').select('name').eq('id', updatedConv.customer_id).single().then(({ data: customer }) => {
+                const notificationTitle = `New message from ${customer?.name || 'a customer'}`;
+                const notificationBody = lastMessage.text;
+                
+                toast.info(notificationBody, { description: notificationTitle });
+                showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+            });
           }
-      }
+        }
+        return newConvos;
+      });
     };
 
     const handleNewConversation = (payload: any) => {
       const newConv = payload.new as Conversation;
-      setConversations(prev => [newConv, ...prev]);
-      const customer = customers.find(c => c.id === newConv.customer_id);
-      const notificationTitle = `New conversation from ${customer?.name || 'a customer'}`;
-      const notificationBody = newConv.last_message_preview || "New message received.";
+      setConversations(prev => [newConv, ...prev].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
+      
+      supabase.from('customers').select('name').eq('id', newConv.customer_id).single().then(({ data: customer }) => {
+        const notificationTitle = `New conversation from ${customer?.name || 'a customer'}`;
+        const notificationBody = newConv.last_message_preview || "New message received.";
 
-      toast.info(notificationBody, { description: notificationTitle });
-      showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+        toast.info(notificationBody, { description: notificationTitle });
+        showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
+      });
     };
 
     const conversationChannel = supabase.channel('realtime-conversations')
@@ -143,7 +150,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       supabase.removeChannel(customerChannel);
       supabase.removeChannel(cannedResponseChannel);
     };
-  }, [conversations, customers, showNotification]);
+  }, [showNotification]);
 
   const selectedConversation = useMemo(() => {
     if (!selectedConversationId) return null;
