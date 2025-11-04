@@ -85,10 +85,10 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     fetchData();
   }, []);
 
-  // --- CORE REAL-TIME FIX ---
-  // This useEffect runs ONLY ONCE and sets up all subscriptions.
-  // It uses functional state updates (e.g., `setConversations(prev => ...)`)
-  // to avoid stale closures and ensure the UI always reflects the latest data.
+  // --- REAL-TIME SUBSCRIPTION ---
+  // This useEffect runs ONLY ONCE.
+  // It subscribes to the `conversations` table.
+  // The handler uses functional state updates to prevent stale data and re-sorts the list on every change.
   useEffect(() => {
     const handleConversationChange = (payload: any) => {
       const updatedRecord = payload.new as Conversation;
@@ -107,14 +107,13 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         // CRITICAL: Always re-sort the list by the latest update timestamp
         newConversationList.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
 
-        // Notification logic
+        // Notification logic for incoming messages
         const oldRecord = recordIndex !== -1 ? currentConversations[recordIndex] : null;
         const hasNewMessage = !oldRecord || updatedRecord.messages.length > oldRecord.messages.length;
         
         if (hasNewMessage) {
           const lastMessage = updatedRecord.messages[updatedRecord.messages.length - 1];
           if (lastMessage && lastMessage.sender === 'customer') {
-            // We fetch the customer name here to ensure notifications are accurate
             supabase.from('customers').select('name').eq('id', updatedRecord.customer_id).single().then(({ data: customer }) => {
               const notificationTitle = payload.eventType === 'INSERT' 
                 ? `New conversation from ${customer?.name || 'a customer'}`
@@ -151,7 +150,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       });
     }).subscribe();
 
-    // Cleanup function to remove channels on component unmount
     return () => {
       supabase.removeChannel(conversationChannel);
       supabase.removeChannel(customerChannel);
@@ -177,9 +175,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     if (error) toast.error(`Failed to update customer: ${error.message}`);
   };
 
-  // --- REWRITTEN SEND MESSAGE LOGIC ---
-  // This function now ONLY updates the database. The UI update is handled
-  // by the realtime subscription, ensuring a single source of truth.
   const addMessage = async (conversationId: string, text: string) => {
     if (!text.trim() || !user) return;
 
@@ -200,11 +195,12 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
 
     const updatedMessages = [...(conversation.messages || []), newMessage];
     
-    // 1. Update the database. This is the trigger for the realtime event.
+    // CRITICAL FIX: Update the database ONLY. The UI will react to the realtime event.
+    // This update includes the new timestamp, which is the key to re-sorting.
     const { error: dbError } = await supabase.from('conversations').update({ 
       messages: updatedMessages, 
       last_message_preview: text, 
-      updated_at: new Date().toISOString() // This is crucial for sorting
+      updated_at: new Date().toISOString()
     }).eq('id', conversationId);
 
     if (dbError) {
@@ -212,7 +208,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       return;
     }
 
-    // 2. Send the message via the API.
+    // After successfully saving to DB, send the message via the API.
     try {
       const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: customer.phone, text }) });
       if (!response.ok) {
@@ -261,6 +257,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       const updatedMessages = [...(conversation.messages || []), newMessage];
       const last_message_preview = caption || file.name;
 
+      // CRITICAL FIX: Update the database ONLY, including the timestamp.
       const { error: dbError } = await supabase.from('conversations').update({ 
         messages: updatedMessages, 
         last_message_preview, 

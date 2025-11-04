@@ -164,15 +164,22 @@ export async function POST(req: NextRequest) {
       console.log(`Existing conversation found (ID: ${conversation.id}). Appending message.`);
       const updatedMessages = [...conversation.messages, newMessage];
       const { error: updateError } = await supabaseAdmin.from('conversations').update({
-          messages: updatedMessages, last_message_preview: lastMessagePreview, unread_count: (conversation.unread_count || 0) + 1,
-          status: 'new', updated_at: new Date().toISOString(),
+          messages: updatedMessages,
+          last_message_preview: lastMessagePreview,
+          unread_count: (conversation.unread_count || 0) + 1,
+          status: 'new',
+          // CRITICAL FIX: This timestamp update is the trigger for the real-time UI sort.
+          updated_at: new Date().toISOString(),
         }).eq('id', conversation.id);
       if (updateError) throw updateError;
     } else {
       console.log("No active conversation found. Creating new one.");
       const { data: newConversation, error: insertError } = await supabaseAdmin.from('conversations').insert({
-          customer_id: customer.id, messages: [newMessage], last_message_preview: lastMessagePreview,
-          unread_count: 1, status: 'new',
+          customer_id: customer.id,
+          messages: [newMessage],
+          last_message_preview: lastMessagePreview,
+          unread_count: 1,
+          status: 'new',
         }).select().single();
       if (insertError) throw insertError;
       
