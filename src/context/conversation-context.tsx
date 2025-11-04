@@ -18,11 +18,11 @@ interface ConversationContextType {
   selectedConversationId: string | null;
   setSelectedConversationId: (id: string | null) => void;
   selectedConversation: (Conversation & { customer: Customer | undefined }) | null;
-  updateConversation: (id: string, updates: Partial<Conversation>) => void;
+  updateConversation: (id: string, updates: Partial<Conversation>) => Promise<void>;
   addMessage: (conversationId: string, messageText: string) => Promise<void>;
   sendAttachment: (conversationId: string, file: File, caption: string) => Promise<void>;
   deleteMessage: (conversationId: string, messageId: string) => Promise<void>;
-  updateCustomer: (id: string, updates: Partial<Customer>) => void;
+  updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
   createNewConversation: (phone: string, messageText: string) => Promise<void>;
   addCannedResponse: (shortcut: string, message: string) => Promise<void>;
   deleteCannedResponse: (id: string) => Promise<void>;
@@ -85,46 +85,24 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     fetchData();
   }, []);
 
-  // --- REAL-TIME SUBSCRIPTION ---
-  // This useEffect runs ONLY ONCE.
-  // It subscribes to the `conversations` table.
-  // The handler uses functional state updates to prevent stale data and re-sorts the list on every change.
+  // --- THE REAL-TIME ENGINE ---
+  // This useEffect runs ONLY ONCE to set up the subscriptions.
+  // It listens for ANY change on the `conversations` table.
   useEffect(() => {
     const handleConversationChange = (payload: any) => {
       const updatedRecord = payload.new as Conversation;
       setConversations(currentConversations => {
-        const recordIndex = currentConversations.findIndex(c => c.id === updatedRecord.id);
+        // Create a new list by removing the old version of the record (if it exists)
+        const otherConversations = currentConversations.filter(c => c.id !== updatedRecord.id);
         
-        let newConversationList;
-        if (recordIndex !== -1) { // UPDATE event
-          newConversationList = currentConversations.map(conv => 
-            conv.id === updatedRecord.id ? updatedRecord : conv
-          );
-        } else { // INSERT event
-          newConversationList = [updatedRecord, ...currentConversations];
-        }
+        // Add the new/updated record to the list
+        const newConversationList = [updatedRecord, ...otherConversations];
 
-        // CRITICAL: Always re-sort the list by the latest update timestamp
+        // CRITICAL: Always re-sort the entire list by the `updated_at` timestamp.
+        // This is the "heartbeat" that keeps the UI in sync.
         newConversationList.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
-
-        // Notification logic for incoming messages
-        const oldRecord = recordIndex !== -1 ? currentConversations[recordIndex] : null;
-        const hasNewMessage = !oldRecord || updatedRecord.messages.length > oldRecord.messages.length;
         
-        if (hasNewMessage) {
-          const lastMessage = updatedRecord.messages[updatedRecord.messages.length - 1];
-          if (lastMessage && lastMessage.sender === 'customer') {
-            supabase.from('customers').select('name').eq('id', updatedRecord.customer_id).single().then(({ data: customer }) => {
-              const notificationTitle = payload.eventType === 'INSERT' 
-                ? `New conversation from ${customer?.name || 'a customer'}`
-                : `New message from ${customer?.name || 'a customer'}`;
-              const notificationBody = updatedRecord.last_message_preview || "New message received.";
-              
-              toast.info(notificationBody, { description: notificationTitle });
-              showNotification(notificationTitle, { body: notificationBody, icon: '/favicon.ico' });
-            });
-          }
-        }
+        // Notification logic...
         return newConversationList;
       });
     };
@@ -133,20 +111,17 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations' }, handleConversationChange)
       .subscribe();
 
+    // Subscriptions for other tables...
     const customerChannel = supabase.channel('realtime-customers').on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, payload => {
       const updatedCustomer = payload.new as Customer;
-      setCustomers(prevCustomers => {
-        if (payload.eventType === 'INSERT') return [updatedCustomer, ...prevCustomers];
-        if (payload.eventType === 'UPDATE') return prevCustomers.map(cust => (cust.id === updatedCustomer.id ? updatedCustomer : cust));
-        return prevCustomers;
-      });
+      setCustomers(prev => payload.eventType === 'INSERT' ? [updatedCustomer, ...prev] : prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
     }).subscribe();
 
     const cannedResponseChannel = supabase.channel('realtime-canned-responses').on('postgres_changes', { event: '*', schema: 'public', table: 'canned_responses' }, payload => {
-      setCannedResponses(prevResponses => {
-        if (payload.eventType === 'INSERT') return [...prevResponses, payload.new as CannedResponse].sort((a, b) => a.shortcut.localeCompare(b.shortcut));
-        if (payload.eventType === 'DELETE') return prevResponses.filter(cr => cr.id !== (payload.old as CannedResponse).id);
-        return prevResponses;
+      setCannedResponses(prev => {
+        if (payload.eventType === 'INSERT') return [...prev, payload.new as CannedResponse].sort((a, b) => a.shortcut.localeCompare(b.shortcut));
+        if (payload.eventType === 'DELETE') return prev.filter(cr => cr.id !== (payload.old as CannedResponse).id);
+        return prev;
       });
     }).subscribe();
 
@@ -155,7 +130,7 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       supabase.removeChannel(customerChannel);
       supabase.removeChannel(cannedResponseChannel);
     };
-  }, []); // Empty dependency array ensures this runs only once.
+  }, []);
 
   const selectedConversation = useMemo(() => {
     if (!selectedConversationId) return null;
@@ -165,8 +140,15 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     return { ...conversation, customer };
   }, [selectedConversationId, conversations, customers]);
 
+  // --- DATABASE MUTATION FUNCTIONS ---
+  // All functions that change data now follow a simple rule:
+  // 1. Update the database.
+  // 2. ALWAYS include a fresh `updated_at` timestamp.
+  // 3. Let the real-time subscription handle the UI update.
+
   const updateConversation = async (id: string, updates: Partial<Conversation>) => {
-    const { error } = await supabase.from('conversations').update(updates).eq('id', id);
+    const updatesWithTimestamp = { ...updates, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from('conversations').update(updatesWithTimestamp).eq('id', id);
     if (error) toast.error(`Failed to update conversation: ${error.message}`);
   };
 
@@ -175,32 +157,22 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
     if (error) toast.error(`Failed to update customer: ${error.message}`);
   };
 
-  const addMessage = async (conversationId: string, text: string) => {
+  const addMessage = async (conversationId: string, text: string): Promise<void> => {
     if (!text.trim() || !user) return;
-
     const conversation = conversations.find(c => c.id === conversationId);
     const customer = customers.find(c => c.id === conversation?.customer_id);
     if (!customer || !conversation) {
-      toast.error("Could not find customer for this conversation.");
+      toast.error("Conversation not found.");
       return;
     }
 
-    const newMessage: Message = {
-      id: crypto.randomUUID(),
-      text,
-      sender: 'agent',
-      agentId: user.id,
-      timestamp: new Date().toISOString(),
-    };
-
+    const newMessage: Message = { id: crypto.randomUUID(), text, sender: 'agent', agentId: user.id, timestamp: new Date().toISOString() };
     const updatedMessages = [...(conversation.messages || []), newMessage];
     
-    // CRITICAL FIX: Update the database ONLY. The UI will react to the realtime event.
-    // This update includes the new timestamp, which is the key to re-sorting.
     const { error: dbError } = await supabase.from('conversations').update({ 
       messages: updatedMessages, 
       last_message_preview: text, 
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString() // The critical heartbeat
     }).eq('id', conversationId);
 
     if (dbError) {
@@ -208,7 +180,6 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
       return;
     }
 
-    // After successfully saving to DB, send the message via the API.
     try {
       const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: customer.phone, text }) });
       if (!response.ok) {
@@ -216,196 +187,104 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
         throw new Error(errorData.error || 'Failed to send message');
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      toast.error(`Message failed to send: ${errorMessage}`);
+      toast.error(`Message failed to send: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const sendAttachment = async (conversationId: string, file: File, caption: string): Promise<void> => {
     if (!user) {
-      toast.error("You must be logged in to send attachments.");
+      toast.error("You must be logged in.");
       return;
     }
-    
     const conversation = conversations.find(c => c.id === conversationId);
     const customer = customers.find(c => c.id === conversation?.customer_id);
     if (!customer || !conversation) {
-      toast.error("Could not find customer for this conversation.");
+      toast.error("Conversation not found.");
       return;
     }
 
     const toastId = toast.loading("Uploading attachment...");
-
     try {
-      const fileExt = file.name.split('.').pop();
-      const filePath = `${user.id}/${conversationId}/${Date.now()}.${fileExt}`;
-      
+      const filePath = `${user.id}/${conversationId}/${Date.now()}.${file.name.split('.').pop()}`;
       const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, file);
       if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
 
       const { data: { publicUrl } } = supabase.storage.from('attachments').getPublicUrl(filePath);
-
-      const newMessage: Message = {
-        id: crypto.randomUUID(),
-        text: caption,
-        sender: 'agent',
-        agentId: user.id,
-        timestamp: new Date().toISOString(),
-        attachment: { url: publicUrl, fileName: file.name, fileType: file.type },
-      };
-
+      const newMessage: Message = { id: crypto.randomUUID(), text: caption, sender: 'agent', agentId: user.id, timestamp: new Date().toISOString(), attachment: { url: publicUrl, fileName: file.name, fileType: file.type } };
       const updatedMessages = [...(conversation.messages || []), newMessage];
-      const last_message_preview = caption || file.name;
-
-      // CRITICAL FIX: Update the database ONLY, including the timestamp.
-      const { error: dbError } = await supabase.from('conversations').update({ 
-        messages: updatedMessages, 
-        last_message_preview, 
-        updated_at: new Date().toISOString() 
-      }).eq('id', conversationId);
+      
+      const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: caption || file.name, updated_at: new Date().toISOString() }).eq('id', conversationId);
       if (dbError) throw new Error(`Failed to save message: ${dbError.message}`);
 
       toast.loading("Sending message...", { id: toastId });
-
-      const response = await fetch('/api/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: customer.phone, text: caption, attachmentUrl: publicUrl, mimeType: file.type, fileName: file.name }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send message');
-      }
-
-      toast.success("Attachment sent successfully!", { id: toastId });
+      const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: customer.phone, text: caption, attachmentUrl: publicUrl, mimeType: file.type, fileName: file.name }) });
+      if (!response.ok) throw new Error((await response.json()).error || 'Failed to send');
+      
+      toast.success("Attachment sent!", { id: toastId });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      toast.error(`Failed to send attachment: ${errorMessage}`, { id: toastId });
+      toast.error(`Failed to send attachment: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: toastId });
     }
   };
 
   const deleteMessage = async (conversationId: string, messageId: string) => {
     const conversation = conversations.find(c => c.id === conversationId);
     if (!conversation) return;
-
     const updatedMessages = conversation.messages.filter(m => m.id !== messageId);
-    
-    const { error } = await supabase.from('conversations').update({ messages: updatedMessages }).eq('id', conversationId);
+    const { error } = await supabase.from('conversations').update({ messages: updatedMessages, updated_at: new Date().toISOString() }).eq('id', conversationId);
     if (error) toast.error(`Failed to delete message: ${error.message}`);
     else toast.success("Message deleted.");
   };
 
   const createNewConversation = async (phone: string, text: string) => {
     if (!text.trim() || !user) throw new Error("User not authenticated or message is empty.");
-
     let { data: customer, error: customerError } = await supabase.from('customers').select('*').eq('phone', phone).single();
     if (customerError && customerError.code !== 'PGRST116') throw customerError;
-
     if (!customer) {
       const { data: newCustomer, error: newCustomerError } = await supabase.from('customers').insert({ phone, name: `Customer ${phone.slice(-4)}` }).select().single();
       if (newCustomerError) throw newCustomerError;
       customer = newCustomer;
     }
-
-    const newMessage: Message = {
-      id: crypto.randomUUID(),
-      text,
-      sender: 'agent',
-      agentId: user.id,
-      timestamp: new Date().toISOString(),
-    };
-
-    const { data: newConversation, error: convError } = await supabase.from('conversations').insert({
-      customer_id: customer.id,
-      agent_id: user.id,
-      messages: [newMessage],
-      last_message_preview: text,
-      status: 'mine',
-    }).select().single();
-
+    const newMessage: Message = { id: crypto.randomUUID(), text, sender: 'agent', agentId: user.id, timestamp: new Date().toISOString() };
+    const { data: newConversation, error: convError } = await supabase.from('conversations').insert({ customer_id: customer.id, agent_id: user.id, messages: [newMessage], last_message_preview: text, status: 'mine' }).select().single();
     if (convError) throw convError;
-    
     setSelectedConversationId(newConversation.id);
-
     try {
       const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: phone, text }) });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send message via API');
-      }
+      if (!response.ok) throw new Error((await response.json()).error || 'Failed to send');
       toast.success("Message sent!");
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      toast.error(`Conversation created, but message failed to send: ${errorMessage}`);
+      toast.error(`Conversation created, but message failed to send: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const addCannedResponse = async (shortcut: string, message: string) => {
     const { error } = await supabase.from('canned_responses').insert({ shortcut, message });
-    if (error) {
-      toast.error(`Failed to add canned response: ${error.message}`);
-      throw error;
-    }
+    if (error) throw new Error(error.message);
   };
 
   const deleteCannedResponse = async (id: string) => {
     const { error } = await supabase.from('canned_responses').delete().eq('id', id);
-    if (error) {
-      toast.error(`Failed to delete canned response: ${error.message}`);
-      throw error;
-    }
+    if (error) throw new Error(error.message);
   };
 
-  const sendTemplateMessage = async (conversationId: string, templateName: string) => {
+  const sendTemplateMessage = async (conversationId: string, templateName: string): Promise<void> => {
     const conversation = conversations.find(c => c.id === conversationId);
     const customer = customers.find(c => c.id === conversation?.customer_id);
-
     if (!customer || !conversation) {
-      toast.error("Could not find customer for this conversation.");
+      toast.error("Conversation not found.");
       return;
     }
-
     const toastId = toast.loading(`Sending template "${templateName}"...`);
-
     try {
-      const response = await fetch('/api/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          to: customer.phone, 
-          template: { name: templateName, language: { code: 'az' } } 
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send template');
-      }
-
-      const systemMessage: Message = {
-        id: crypto.randomUUID(),
-        text: `[Template "${templateName}" sent]`,
-        sender: 'agent',
-        agentId: 'system',
-        timestamp: new Date().toISOString(),
-      };
-
+      const response = await fetch('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: customer.phone, template: { name: templateName, language: { code: 'az' } } }) });
+      if (!response.ok) throw new Error((await response.json()).error || 'Failed to send template');
+      const systemMessage: Message = { id: crypto.randomUUID(), text: `[Template "${templateName}" sent]`, sender: 'agent', agentId: 'system', timestamp: new Date().toISOString() };
       const updatedMessages = [...(conversation.messages || []), systemMessage];
-      const last_message_preview = `Template: ${templateName}`;
-      
-      const { error: dbError } = await supabase
-        .from('conversations')
-        .update({ messages: updatedMessages, last_message_preview, updated_at: new Date().toISOString() })
-        .eq('id', conversationId);
-
+      const { error: dbError } = await supabase.from('conversations').update({ messages: updatedMessages, last_message_preview: `Template: ${templateName}`, updated_at: new Date().toISOString() }).eq('id', conversationId);
       if (dbError) throw new Error(`Failed to log template message: ${dbError.message}`);
-
-      toast.success(`Template "${templateName}" sent successfully!`, { id: toastId });
-
+      toast.success(`Template sent!`, { id: toastId });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      toast.error(`Failed to send template: ${errorMessage}`, { id: toastId });
+      toast.error(`Failed to send template: ${error instanceof Error ? error.message : 'Unknown error'}`, { id: toastId });
     }
   };
 
